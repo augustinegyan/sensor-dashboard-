@@ -206,7 +206,28 @@
   }
   .btn:hover { background: var(--surface2); }
   .btn:active { opacity: 0.7; }
-</style>
+
+  /* Offline alert */
+  #offline-alert {
+    display: none;
+    background: var(--danger);
+    color: #fff;
+    text-align: center;
+    padding: 10px 1.25rem;
+    border-radius: var(--rad);
+    margin-bottom: 1.5rem;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  #offline-alert.show { display: block; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.7; }
+  }
 </head>
 <body>
 
@@ -217,13 +238,14 @@
       <span class="dot" id="dot"></span>
       <span id="status-txt">Connecting…</span>
     </div>
-    <button class="btn" onclick="clearData()">Clear</button>
     <button class="btn" onclick="exportCSV()">CSV</button>
     <button class="btn" onclick="exportJSON()">JSON</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(this)" />
     <button class="btn" onclick="document.getElementById('importFile').click()">Import</button>
   </div>
 </header>
+
+<div id="offline-alert">⚠ Gateway Offline</div>
 
 <div class="cards">
   <div class="card">
@@ -449,20 +471,10 @@ function updateDBCount() {
   countDB().then(n => { document.getElementById('dbCount').textContent = n + ' logged'; });
 }
 
-function clearData() {
-  [flowChart, vibrChart, turbChart, tempChart].forEach(c => {
-    if (!c) return;
-    c.data.labels = [];
-    c.data.datasets[0].data = [];
-    c.update();
-  });
-  ['c-flow','c-vibr','c-turb','c-seq','c-rssi','c-temp','c-gw-status'].forEach(id => {
-    document.getElementById(id).innerHTML = '—';
-  });
-  document.getElementById('log').innerHTML = '';
-  clearDB();
-  updateDBCount();
-  addLog('Cleared all data.');
+function setOfflineAlert(show) {
+  const el = document.getElementById('offline-alert');
+  if (!el) return;
+  el.classList.toggle('show', show);
 }
 
 // ── Sensor data processing ──
@@ -534,6 +546,7 @@ function processSensorData(topic, raw, timestamp, sequence) {
       const statusText = isOnline ? 'ONLINE' : 'OFFLINE';
       const statusColor = isOnline ? 'var(--turb)' : 'var(--danger)';
       document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>';
+      setOfflineAlert(!isOnline);
       foundParts.push('gw=' + (isOnline ? 'online' : 'offline'));
       anyUpdated = true;
     }
