@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sys_Test Environment </title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.4/dist/mqtt.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f5f4f0;
+    --surface:   #ffffff;
+    --surface2:  #eeede9;
+    --border:    rgba(0,0,0,0.10);
+    --text:      #1a1a18;
+    --muted:     #6b6a66;
+    --flow:      #378ADD;
+    --turb:      #1D9E75;
+    --vibr:      #C06DC4;
+    --danger:    #D85A30;
+    --rad:       10px;
+    --font:      'IBM Plex Mono', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:      #141413;
+      --surface: #1e1e1c;
+      --surface2:#272725;
+      --border:  rgba(255,255,255,0.09);
+      --text:    #e8e7e3;
+      --muted:   #888780;
+    }
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 2rem;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s;
+  }
+  .dot.live { background: var(--turb); }
+  .dot.error { background: var(--danger); }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1rem 1.25rem;
+  }
+
+  .card-label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .card-value {
+    font-size: 28px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .card-unit {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 4px;
+  }
+
+  .chart-block {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .chart-swatch {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+  }
+
+  .chart-title {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 220px;
+  }
+
+  .log-block {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .log-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  #log {
+    height: 140px;
+    overflow-y: auto;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  #log .entry { display: flex; gap: 12px; }
+  #log .ts    { color: var(--muted); min-width: 72px; flex-shrink: 0; }
+  #log .msg   { color: var(--text); }
+  #log .warn  { color: var(--danger); }
+
+  footer {
+    margin-top: 2rem;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+
+  footer a {
+    color: var(--muted);
+    text-decoration: underline 0.5px dotted;
+  }
+
+  .btn {
+    background: transparent;
+    border: 0.5px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: var(--font);
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--surface2); }
+  .btn:active { opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#9670; SYS_Test_Environment</h1>
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="status-txt">Connecting…</span>
+    </div>
+    <button class="btn" onclick="clearData()">Clear</button>
+    <button class="btn" onclick="exportCSV()">CSV</button>
+    <button class="btn" onclick="exportJSON()">JSON</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(this)" />
+    <button class="btn" onclick="document.getElementById('importFile').click()">Import</button>
+  </div>
+</header>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Flow rate</div>
+    <div class="card-value" id="c-flow">—<span class="card-unit">L/min</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Vibration</div>
+    <div class="card-value" id="c-vibr">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Turbidity</div>
+    <div class="card-value" id="c-turb">—<span class="card-unit">NTU</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Packet #</div>
+    <div class="card-value" id="c-seq">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Signal (RSSI)</div>
+    <div class="card-value" id="c-rssi">—<span class="card-unit">dBm</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gateway Temp</div>
+    <div class="card-value" id="c-temp">—<span class="card-unit">°C</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gateway Status</div>
+    <div class="card-value" id="c-gw-status" style="font-size:22px;">—</div>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--flow)"></span>
+    <span class="chart-title">Flow rate — L/min</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="flowChart" role="img" aria-label="Flow rate over time">Flow rate readings over time.</canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--vibr)"></span>
+    <span class="chart-title">Vibration — State (0=calm · 1=vibration)</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="vibrChart" role="img" aria-label="Vibration over time">Vibration readings over time.</canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--turb)"></span>
+    <span class="chart-title">Turbidity — NTU</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="turbChart" role="img" aria-label="Turbidity over time">Turbidity readings over time.</canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--flow);opacity:0.6"></span>
+    <span class="chart-title">Gateway Temperature — °C</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="tempChart" role="img" aria-label="Temperature over time">Temperature readings over time.</canvas>
+  </div>
+</div>
+
+<div class="log-block">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:0.75rem;">
+    <span class="log-title" style="margin-bottom:0;">Raw log</span>
+    <span id="dbCount" style="font-size:11px; color:var(--muted); margin-left:auto;">0 logged</span>
+  </div>
+  <div id="log"></div>
+</div>
+
+<footer>
+  broker.emqx.io:1883 &nbsp;·&nbsp;
+  sensors/flow + sensors/vibration + sensors/turbidity + sensors/environment + sensors/gw_status &nbsp;·&nbsp;
+  hosted on <a href="https://pages.github.com">GitHub Pages</a>
+</footer>
+
+<script>
+const MAX = 60;
+const MQTT_WS = 'wss://broker.emqx.io:8084/mqtt';
+const CLIENT_ID = 'dashboard_web_' + Math.random().toString(16).slice(2, 8);
+const TOPICS = ['sensors/flow', 'sensors/vibration', 'sensors/turbidity', 'sensors/environment', 'sensors/gw_status'];
+
+// ── Firebase Realtime Database ──
+
+const firebaseConfig = {
+  apiKey: "AIzaSyABkKRGYMyE3Gk-AxNa4_3eUGlgK5-vl84",
+  authDomain: "galamsey-a1073.firebaseapp.com",
+  databaseURL: "https://galamsey-a1073-default-rtdb.firebaseio.com",
+  projectId: "galamsey-a1073",
+  storageBucket: "galamsey-a1073.firebasestorage.app",
+  messagingSenderId: "851290999959",
+  appId: "1:851290999959:web:11ad21c699c94b681a6dd2",
+  measurementId: "G-Z5CJKQSSSX"
+};
+firebase.initializeApp(firebaseConfig);
+
+const dbRef = firebase.database().ref('messages');
+
+function saveDB(entry) {
+  dbRef.push(entry);
+}
+
+function getAllDB() {
+  return dbRef.orderByChild('timestamp').once('value')
+    .then(snapshot => {
+      const data = [];
+      snapshot.forEach(child => {
+        data.push({ id: child.key, ...child.val() });
+      });
+      return data;
+    })
+    .catch(() => []);
+}
+
+function countDB() {
+  return dbRef.once('value')
+    .then(snapshot => snapshot.numChildren())
+    .catch(() => 0);
+}
+
+function clearDB() {
+  dbRef.remove();
+}
+
+// ── Charts ──
+
+function makeChart(id, color, label, unit) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  return new Chart(el, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label: label + ' (' + unit + ')',
+      data: [],
+      borderColor: color,
+      backgroundColor: color + '18',
+      borderWidth: 1.5,
+      pointRadius: 3,
+      pointBackgroundColor: color,
+      tension: 0.35,
+      fill: true
+    }]},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" }, maxTicksLimit: 8, maxRotation: 0, autoSkip: true },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" } },
+          grid: { color: 'rgba(128,128,128,0.08)' }
+        }
+      }
+    }
+  });
+}
+
+const root = document.documentElement;
+const flowChart = makeChart('flowChart', getComputedStyle(root).getPropertyValue('--flow').trim() || '#378ADD', 'Flow', 'L/min');
+const vibrChart = makeChart('vibrChart', getComputedStyle(root).getPropertyValue('--vibr').trim() || '#C06DC4', 'Vibration', 'state');
+// Binary y-axis for vibration state (0/1)
+if (vibrChart) {
+  vibrChart.options.scales.y.min = -0.3;
+  vibrChart.options.scales.y.max = 1.3;
+  vibrChart.options.scales.y.ticks.stepSize = 1;
+  vibrChart.data.datasets[0].tension = 0; // stepped look for binary data
+  vibrChart.update();
+}
+const turbChart = makeChart('turbChart', getComputedStyle(root).getPropertyValue('--turb').trim() || '#1D9E75', 'Turbidity', 'NTU');
+
+// Temperature chart — shares --flow color but more subdued
+const tempChart = makeChart('tempChart', '#F5A623', 'Temperature', '°C');
+
+function push(chart, label, value) {
+  if (!chart) return;
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(value);
+  if (chart.data.labels.length > MAX) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+  }
+  chart.update('none');
+}
+
+function addLog(msg, warn) {
+  const log = document.getElementById('log');
+  const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const row = document.createElement('div');
+  row.className = 'entry';
+  row.innerHTML = '<span class="ts">' + now + '</span><span class="msg' + (warn ? ' warn' : '') + '">' + msg + '</span>';
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+  if (log.children.length > 200) log.removeChild(log.firstChild);
+}
+
+function setStatus(state) {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('status-txt');
+  dot.className = 'dot ' + state;
+  const map = { live: 'Connected — receiving', error: 'Connection failed', '': 'Connecting…' };
+  txt.textContent = map[state] || 'Connecting…';
+}
+
+function updateDBCount() {
+  countDB().then(n => { document.getElementById('dbCount').textContent = n + ' logged'; });
+}
+
+function clearData() {
+  [flowChart, vibrChart, turbChart, tempChart].forEach(c => {
+    if (!c) return;
+    c.data.labels = [];
+    c.data.datasets[0].data = [];
+    c.update();
+  });
+  ['c-flow','c-vibr','c-turb','c-seq','c-rssi','c-temp','c-gw-status'].forEach(id => {
+    document.getElementById(id).innerHTML = '—';
+  });
+  document.getElementById('log').innerHTML = '';
+  clearDB();
+  updateDBCount();
+  addLog('Cleared all data.');
+}
+
+// ── Sensor data processing ──
+
+function processSensorData(topic, raw, timestamp, sequence) {
+  // Try to parse as JSON object first, else treat as plain number
+  let data, isJson;
+  try {
+    const parsed = JSON.parse(raw);
+    data = typeof parsed === 'object' && parsed !== null ? parsed : { value: parsed };
+    isJson = true;
+  } catch {
+    data = { value: raw };
+    isJson = false;
+  }
+
+  const entry = { topic, value: null, raw, timestamp };
+  let anyUpdated = false;
+  let logMsg = '';
+  const time = new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  if (isJson) {
+    entry.value = raw;
+    const sensors = [
+      { keys: ['flow','f','flow_rate','lpm'],              chart: flowChart, el: 'c-flow',  unit: 'L/min',  fmt: 1 },
+      { keys: ['state','vibration','vibr','v','freq','hz','amp'], chart: vibrChart, el: 'c-vibr', unit: '', fmt: 0 },
+      { keys: ['turbidity','turb','t','ntu','raw','ntu_raw'], chart: turbChart, el: 'c-turb',  unit: 'NTU',    fmt: 1 },
+      { keys: ['seq','sequence','id','packet'],            chart: null,      el: 'c-seq',   unit: '',       fmt: 0 },
+      { keys: ['rssi','signal','dbm','rss','sig'],         chart: null,      el: 'c-rssi',  unit: 'dBm',    fmt: 0 },
+      { keys: ['temp','temperature','t','T'],               chart: tempChart, el: 'c-temp',  unit: '°C',     fmt: 1 },
+    ];
+    const foundParts = [];
+
+    for (const s of sensors) {
+      let val;
+      for (const k of s.keys) { val = parseFloat(data[k]); if (!isNaN(val)) break; }
+      if (isNaN(val)) continue;
+      if (s.chart) push(s.chart, time, val);
+      if (s.unit) {
+        document.getElementById(s.el).innerHTML = val.toFixed(s.fmt) + '<span class="card-unit">' + s.unit + '</span>';
+      } else {
+        document.getElementById(s.el).textContent = val.toFixed(s.fmt);
+      }
+      const label = s.keys[0] === 'vibration' ? 'vibr' : s.keys[0] === 'turbidity' ? 'turb' : s.keys[0] === 'flow' ? 'flow' : s.keys[0];
+      foundParts.push(label + '=' + val.toFixed(s.fmt));
+      anyUpdated = true;
+    }
+
+    // If on vibration topic and no known key matched, try ANY numeric field
+    if (!anyUpdated && topic === 'sensors/vibration') {
+      for (const k in data) {
+        const v = parseFloat(data[k]);
+        if (!isNaN(v) && typeof data[k] === 'number') {
+          push(vibrChart, time, v);
+          document.getElementById('c-vibr').innerHTML = v.toFixed(1) + '<span class="card-unit">Hz</span>';
+          document.getElementById('c-seq').textContent = sequence;
+          foundParts.push('vibr=' + v.toFixed(1) + ' (~' + k + ')');
+          anyUpdated = true;
+          break;
+        }
+      }
+    }
+
+    // Gateway status — show ONLINE / OFFLINE
+    if (topic === 'sensors/gw_status') {
+      const statusVal = data.status;
+      const isOnline = statusVal === 'online' || statusVal === 'heartbeat' || data.online === true || data.state === 'online' || data.online === 'true';
+      const statusText = isOnline ? 'ONLINE' : 'OFFLINE';
+      const statusColor = isOnline ? 'var(--turb)' : 'var(--danger)';
+      document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>';
+      foundParts.push('gw=' + (isOnline ? 'online' : 'offline'));
+      anyUpdated = true;
+    }
+
+    // Vibration state display — show CALM/VIBRATION with color
+    if (topic === 'sensors/vibration' && data.state !== undefined) {
+      const stateVal = parseInt(data.state);
+      const stateText = stateVal === 1 ? 'VIBRATION' : 'CALM';
+      const stateColor = stateVal === 1 ? 'var(--danger)' : 'var(--turb)';
+      const countVal = data.count !== undefined ? parseInt(data.count) : null;
+      document.getElementById('c-vibr').innerHTML = '<span style="color:' + stateColor + ';font-size:24px;font-weight:500;">' + stateText + '</span>'
+        + (countVal !== null ? '<br><span style="font-size:11px;color:var(--muted);letter-spacing:0.08em;">count=' + countVal + '</span>' : '');
+    }
+
+    logMsg = foundParts.length ? foundParts.join('  ') : '⚠ ' + raw;
+  } else {
+    // Plain payload — route by topic
+    const val = parseFloat(raw);
+    if (isNaN(val)) return null;
+    entry.value = val;
+    if (topic === 'sensors/flow')       { push(flowChart, time, val); document.getElementById('c-flow').innerHTML  = val.toFixed(1) + '<span class="card-unit">L/min</span>'; logMsg = 'flow=' + val.toFixed(1); }
+    else if (topic === 'sensors/vibration') { push(vibrChart, time, val); document.getElementById('c-vibr').innerHTML = val.toFixed(1) + '<span class="card-unit">Hz</span>'; logMsg = 'vibr=' + val.toFixed(1); }
+    else if (topic === 'sensors/turbidity') { push(turbChart, time, val); document.getElementById('c-turb').innerHTML = val.toFixed(1) + '<span class="card-unit">NTU</span>'; logMsg = 'turb=' + val.toFixed(1); }
+    else { return null; }
+    document.getElementById('c-seq').textContent = sequence;
+    anyUpdated = true;
+  }
+
+  if (!anyUpdated) return null;
+
+  return { logMsg, entry };
+}
+
+// ── MQTT ──
+
+let mqttClient = null;
+let seq = 0;
+
+function connectMQTT() {
+  if (mqttClient && mqttClient.connected) return;
+
+  mqttClient = mqtt.connect(MQTT_WS, {
+    clientId: CLIENT_ID,
+    clean: true,
+    keepalive: 60,
+    reconnectPeriod: 3000,
+    connectTimeout: 10000,
+  });
+
+  mqttClient.on('connect', () => {
+    setStatus('live');
+    addLog('MQTT connected to broker.emqx.io');
+    for (const t of TOPICS) {
+      mqttClient.subscribe(t, { qos: 1 });
+    }
+  });
+
+  mqttClient.on('message', (topic, payload) => {
+    seq++;
+    const raw  = payload.toString();
+    const timestamp = new Date().toISOString();
+
+    const result = processSensorData(topic, raw, timestamp, seq);
+    if (!result) {
+      addLog('⚠ RAW: ' + raw + '  (topic=' + topic + ')', true);
+      return;
+    }
+
+    // Save to Firebase
+    saveDB(result.entry);
+    updateDBCount();
+
+    addLog(result.logMsg + '  seq=' + seq);
+  });
+
+  mqttClient.on('error', (err) => {
+    addLog('MQTT error: ' + (err.message || err), true);
+  });
+
+  mqttClient.on('close', () => {
+    if (document.getElementById('dot').className.includes('live')) {
+      setStatus('error');
+      addLog('MQTT disconnected.', true);
+    }
+  });
+
+  mqttClient.on('offline', () => {
+    setStatus('error');
+    addLog('MQTT offline — reconnecting…', true);
+  });
+}
+
+// ── Export / Import ──
+
+async function exportCSV() {
+  const data = await getAllDB();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const header = 'ID,Timestamp,Topic,Value,Raw';
+  const rows = data.map(r => r.id + ',"' + r.timestamp + '","' + r.topic + '","' + r.value + '","' + (r.raw || '').replace(/"/g, '""') + '"');
+  const blob = new Blob(['\uFEFF' + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(blob);
+  addLog('Exported ' + data.length + ' rows as CSV.');
+}
+
+async function exportJSON() {
+  const data = await getAllDB();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(blob);
+  addLog('Exported ' + data.length + ' entries as JSON.');
+}
+
+function importJSON(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const arr = JSON.parse(e.target.result);
+      if (!Array.isArray(arr) || !arr.length) { addLog('Invalid or empty JSON.', true); return; }
+      for (const entry of arr) {
+        saveDB({
+          topic: entry.topic || '',
+          value: entry.value || '',
+          raw: entry.raw || entry.value || '',
+          timestamp: entry.timestamp || new Date().toISOString(),
+        });
+      }
+      addLog('Imported ' + arr.length + ' entries.');
+      updateDBCount();
+    } catch (err) {
+      addLog('Import failed: ' + err.message, true);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ── Historical data load ──
+
+function loadHistoricalData() {
+  getAllDB().then(data => {
+    if (!data.length) return;
+    for (const entry of data) {
+      seq++;
+      processSensorData(entry.topic, entry.raw || entry.value, entry.timestamp, seq);
+    }
+    addLog('Loaded ' + data.length + ' historical records from Firebase.');
+    updateDBCount();
+  });
+}
+
+// ── Boot ──
+
+function boot() {
+  updateDBCount();
+  connectMQTT();
+  loadHistoricalData();
+}
+
+boot();
+</script>
+</body>
+</html>
