@@ -316,6 +316,10 @@ const MQTT_WS = 'wss://broker.emqx.io:8084/mqtt';
 const CLIENT_ID = 'dashboard_web_' + Math.random().toString(16).slice(2, 8);
 const TOPICS = ['sensors/flow', 'sensors/vibration', 'sensors/turbidity', 'sensors/environment', 'sensors/gw_status'];
 
+// ── Calibration offsets ──
+// Sensor reads ~12°C high inside IP65 enclosure at ~80°F ambient
+const TEMP_OFFSET = 12;
+
 // ── Firebase Realtime Database ──
 
 const firebaseConfig = {
@@ -488,7 +492,7 @@ function processSensorData(topic, raw, timestamp, sequence) {
       { keys: ['turbidity','turb','t','ntu','raw','ntu_raw'], chart: turbChart, el: 'c-turb',  unit: 'NTU',    fmt: 1 },
       { keys: ['seq','sequence','id','packet'],            chart: null,      el: 'c-seq',   unit: '',       fmt: 0 },
       { keys: ['rssi','signal','dbm','rss','sig'],         chart: null,      el: 'c-rssi',  unit: 'dBm',    fmt: 0 },
-      { keys: ['temp','temperature','t','T'],               chart: tempChart, el: 'c-temp',  unit: '°C',     fmt: 1 },
+      { keys: ['temp','temperature','t','T'],               chart: tempChart, el: 'c-temp',  unit: '°C',     fmt: 1, offset: TEMP_OFFSET },
     ];
     const foundParts = [];
 
@@ -496,6 +500,7 @@ function processSensorData(topic, raw, timestamp, sequence) {
       let val;
       for (const k of s.keys) { val = parseFloat(data[k]); if (!isNaN(val)) break; }
       if (isNaN(val)) continue;
+      if (s.offset) val -= s.offset;
       if (s.chart) push(s.chart, time, val);
       if (s.unit) {
         document.getElementById(s.el).innerHTML = val.toFixed(s.fmt) + '<span class="card-unit">' + s.unit + '</span>';
