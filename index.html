@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -720,6 +720,875 @@ function boot() {
 }
 
 boot();
+</script>
+</body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sys_Test Environment</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.4/dist/mqtt.min.js"></script>
+
+<!-- Firebase compat SDK (app + database + auth) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f5f4f0;
+    --surface:   #ffffff;
+    --surface2:  #eeede9;
+    --border:    rgba(0,0,0,0.10);
+    --text:      #1a1a18;
+    --muted:     #6b6a66;
+    --flow:      #378ADD;
+    --turb:      #1D9E75;
+    --vibr:      #C06DC4;
+    --danger:    #D85A30;
+    --rad:       10px;
+    --font:      'IBM Plex Mono', monospace;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:      #141413;
+      --surface: #1e1e1c;
+      --surface2:#272725;
+      --border:  rgba(255,255,255,0.09);
+      --text:    #e8e7e3;
+      --muted:   #888780;
+    }
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 2rem;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s;
+  }
+  .dot.live  { background: var(--turb); }
+  .dot.error { background: var(--danger); }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1rem 1.25rem;
+  }
+
+  .card-label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .card-value {
+    font-size: 28px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .card-unit {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 4px;
+  }
+
+  .chart-block {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .chart-swatch {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+  }
+
+  .chart-title {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 220px;
+  }
+
+  .log-block {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .log-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  #log {
+    height: 140px;
+    overflow-y: auto;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  #log .entry { display: flex; gap: 12px; }
+  #log .ts    { color: var(--muted); min-width: 72px; flex-shrink: 0; }
+  #log .msg   { color: var(--text); }
+  #log .warn  { color: var(--danger); }
+
+  footer {
+    margin-top: 2rem;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+
+  footer a {
+    color: var(--muted);
+    text-decoration: underline 0.5px dotted;
+  }
+
+  .btn {
+    background: transparent;
+    border: 0.5px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: var(--font);
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover  { background: var(--surface2); }
+  .btn:active { opacity: 0.7; }
+
+  /* Offline alert */
+  #offline-alert {
+    display: none;
+    background: var(--danger);
+    color: #fff;
+    text-align: center;
+    padding: 10px 1.25rem;
+    border-radius: var(--rad);
+    margin-bottom: 1.5rem;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  #offline-alert.show { display: block; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.7; }
+  }
+
+  /* Auth status pill — sits in header, invisible when signed in */
+  #auth-pill {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  #auth-pill.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#9670; SYS_Test_Environment</h1>
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <span id="auth-pill">AUTH ···</span>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="status-txt">Connecting…</span>
+    </div>
+    <button class="btn" onclick="exportCSV()">CSV</button>
+    <button class="btn" onclick="exportJSON()">JSON</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(this)" />
+    <button class="btn" onclick="document.getElementById('importFile').click()">Import</button>
+  </div>
+</header>
+
+<div id="offline-alert">⚠ Gateway Offline</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Flow rate</div>
+    <div class="card-value" id="c-flow">—<span class="card-unit">L/min</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Vibration</div>
+    <div class="card-value" id="c-vibr">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Turbidity</div>
+    <div class="card-value" id="c-turb">—<span class="card-unit">NTU</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Packet #</div>
+    <div class="card-value" id="c-seq">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Signal (RSSI)</div>
+    <div class="card-value" id="c-rssi">—<span class="card-unit">dBm</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gateway Temp</div>
+    <div class="card-value" id="c-temp">—<span class="card-unit">°C</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gateway Status</div>
+    <div class="card-value" id="c-gw-status" style="font-size:22px;">—</div>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--flow)"></span>
+    <span class="chart-title">Flow rate — L/min</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="flowChart" role="img" aria-label="Flow rate over time"></canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--vibr)"></span>
+    <span class="chart-title">Vibration — State (0=calm · 1=vibration)</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="vibrChart" role="img" aria-label="Vibration over time"></canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--turb)"></span>
+    <span class="chart-title">Turbidity — NTU</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="turbChart" role="img" aria-label="Turbidity over time"></canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:#F5A623;opacity:0.8"></span>
+    <span class="chart-title">Gateway Temperature — °C</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="tempChart" role="img" aria-label="Temperature over time"></canvas>
+  </div>
+</div>
+
+<div class="log-block">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:0.75rem;">
+    <span class="log-title" style="margin-bottom:0;">Raw log</span>
+    <span id="dbCount" style="font-size:11px; color:var(--muted); margin-left:auto;">0 logged</span>
+  </div>
+  <div id="log"></div>
+</div>
+
+<footer>
+  broker.emqx.io:8084 &nbsp;·&nbsp;
+  sensors/flow + sensors/vibration + sensors/turbidity + sensors/environment + sensors/gw_status &nbsp;·&nbsp;
+  hosted on <a href="https://pages.github.com">GitHub Pages</a>
+</footer>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONSTANTS
+// ─────────────────────────────────────────────
+const MAX          = 60;
+const MQTT_WS      = 'wss://broker.emqx.io:8084/mqtt';
+const CLIENT_ID    = 'dashboard_web_' + Math.random().toString(16).slice(2, 8);
+const TOPICS       = ['sensors/flow','sensors/vibration','sensors/turbidity','sensors/environment','sensors/gw_status'];
+const TEMP_OFFSET  = 12;           // sensor reads ~12°C high inside IP65 enclosure
+const HISTORY_LIMIT = 100;         // FIX 1: only load last N records on open
+const PRUNE_DAYS   = 7;            // FIX 3: delete records older than this
+const PRUNE_BATCH  = 50;           // delete at most this many per prune run
+const PRUNE_CHANCE = 0.05;         // FIX 3: run prune on ~5% of incoming packets
+
+// ─────────────────────────────────────────────
+//  FIREBASE INIT
+// ─────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey:            "AIzaSyABkKRGYMyE3Gk-AxNa4_3eUGlgK5-vl84",
+  authDomain:        "galamsey-a1073.firebaseapp.com",
+  databaseURL:       "https://galamsey-a1073-default-rtdb.firebaseio.com",
+  projectId:         "galamsey-a1073",
+  storageBucket:     "galamsey-a1073.firebasestorage.app",
+  messagingSenderId: "851290999959",
+  appId:             "1:851290999959:web:11ad21c699c94b681a6dd2",
+  measurementId:     "G-Z5CJKQSSSX"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db     = firebase.database();
+const dbRef  = db.ref('messages');
+const auth   = firebase.auth();
+
+// ─────────────────────────────────────────────
+//  FIX: LOCAL PACKET COUNTER
+//  Never call dbRef.once('value') just to count.
+//  We keep a local integer and increment on each save.
+// ─────────────────────────────────────────────
+let localCount = 0;
+
+function updateDBCount(delta = 1) {
+  localCount += delta;
+  document.getElementById('dbCount').textContent = localCount + ' logged';
+}
+
+// ─────────────────────────────────────────────
+//  FIREBASE AUTH — anonymous sign-in
+//  This is completely silent / invisible to you.
+//  It lets Firebase rules say auth != null without
+//  any login screen.  Strangers who find your
+//  databaseURL in the page source will be blocked.
+//
+//  Firebase console steps (one-time, ~60 seconds):
+//    1. Console → Authentication → Sign-in method
+//    2. Enable "Anonymous"  (toggle on, save)
+//    3. Console → Realtime Database → Rules → publish:
+//       {
+//         "rules": {
+//           "messages": {
+//             ".read":  "auth != null",
+//             ".write": "auth != null"
+//           }
+//         }
+//       }
+//  That's it. The page auto-signs in on load, reads and
+//  writes work exactly as before, random scrapers are blocked.
+// ─────────────────────────────────────────────
+let authReady = false;   // gate: don't touch DB until signed in
+
+function signInAnonymously() {
+  const pill = document.getElementById('auth-pill');
+  pill.textContent = 'AUTH ···';
+  pill.classList.add('visible');
+
+  auth.signInAnonymously()
+    .then(() => {
+      authReady = true;
+      pill.textContent = 'AUTH OK';
+      // Fade the pill out after 3 s — no need to keep showing it
+      setTimeout(() => pill.classList.remove('visible'), 3000);
+      // Now that we're signed in, load history and connect MQTT
+      initCountFromDB();
+      loadHistoricalData();
+      connectMQTT();
+    })
+    .catch(err => {
+      pill.textContent = 'AUTH ERR';
+      addLog('Firebase auth failed: ' + err.message, true);
+      // Graceful degradation: still connect MQTT so live data shows,
+      // but DB reads/writes will silently fail if rules are enforced.
+      connectMQTT();
+    });
+}
+
+// ─────────────────────────────────────────────
+//  DB HELPERS
+// ─────────────────────────────────────────────
+
+// FIX 2a: Shallow REST count — downloads only keys, not data.
+// Firebase charges per byte downloaded; this is nearly free.
+function initCountFromDB() {
+  const url = firebaseConfig.databaseURL + '/messages.json?shallow=true';
+  fetch(url, {
+    headers: {
+      // Pass the Firebase ID token so the shallow read respects auth rules.
+      // We grab it fresh from the signed-in user.
+    }
+  })
+  .then(async res => {
+    // If auth rules are active, the anonymous token must be in the request.
+    // The compat SDK doesn't auto-inject into fetch(), so we use
+    // auth.currentUser.getIdToken() and attach it manually.
+    if (!res.ok) {
+      // Auth-protected: retry with token
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
+      return fetch(url + '&auth=' + token).then(r => r.json());
+    }
+    return res.json();
+  })
+  .then(data => {
+    if (data && typeof data === 'object') {
+      const n = Object.keys(data).length;
+      localCount = n;
+      document.getElementById('dbCount').textContent = n + ' logged';
+    }
+  })
+  .catch(() => {
+    // Silent fallback — count just won't show until the next write
+  });
+}
+
+function saveDB(entry) {
+  if (!authReady) return;
+  dbRef.push(entry);
+  updateDBCount(1);
+
+  // FIX 3: Probabilistic prune — runs ~5% of the time so we
+  // don't hammer Firebase with delete queries on every packet.
+  if (Math.random() < PRUNE_CHANCE) pruneOldEntries();
+}
+
+function pruneOldEntries() {
+  const cutoff = new Date(Date.now() - PRUNE_DAYS * 86400000).toISOString();
+  dbRef.orderByChild('timestamp')
+    .endAt(cutoff)
+    .limitToFirst(PRUNE_BATCH)
+    .once('value', snap => {
+      if (!snap.exists()) return;
+      const updates = {};
+      let pruned = 0;
+      snap.forEach(child => { updates[child.key] = null; pruned++; });
+      if (pruned > 0) {
+        dbRef.update(updates);
+        // Subtract pruned count from local counter (rough, but good enough)
+        localCount = Math.max(0, localCount - pruned);
+        document.getElementById('dbCount').textContent = localCount + ' logged';
+        addLog('Pruned ' + pruned + ' records older than ' + PRUNE_DAYS + ' days.');
+      }
+    });
+}
+
+// FIX 1: Only fetch the last HISTORY_LIMIT records — not the whole database.
+// Previously the code called dbRef.once('value') with no limit, downloading
+// the entire message history on every page load.
+function loadHistoricalData() {
+  if (!authReady) return;
+
+  dbRef.orderByChild('timestamp')
+    .limitToLast(HISTORY_LIMIT)
+    .once('value', snap => {
+      if (!snap.exists()) return;
+      const rows = [];
+      snap.forEach(child => rows.push(child.val()));
+
+      let loaded = 0;
+      rows.forEach((entry, i) => {
+        const result = processSensorData(
+          entry.topic,
+          entry.raw || String(entry.value),
+          entry.timestamp,
+          i + 1
+        );
+        if (result) loaded++;
+      });
+      addLog('Loaded last ' + loaded + ' records from Firebase.');
+    });
+}
+
+// getAllDB — used only by export buttons.
+// We now limit to last 5000 records so a gigantic DB doesn't download
+// 8 GB into the browser just because someone clicked "JSON".
+function getAllDB() {
+  if (!authReady) return Promise.resolve([]);
+  return dbRef.orderByChild('timestamp')
+    .limitToLast(5000)
+    .once('value')
+    .then(snapshot => {
+      const data = [];
+      snapshot.forEach(child => data.push({ id: child.key, ...child.val() }));
+      return data;
+    })
+    .catch(() => []);
+}
+
+// ─────────────────────────────────────────────
+//  CHARTS
+// ─────────────────────────────────────────────
+function makeChart(id, color, label, unit) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  return new Chart(el, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label: label + ' (' + unit + ')',
+      data: [],
+      borderColor: color,
+      backgroundColor: color + '18',
+      borderWidth: 1.5,
+      pointRadius: 3,
+      pointBackgroundColor: color,
+      tension: 0.35,
+      fill: true
+    }]},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" }, maxTicksLimit: 8, maxRotation: 0, autoSkip: true },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" } },
+          grid: { color: 'rgba(128,128,128,0.08)' }
+        }
+      }
+    }
+  });
+}
+
+const root      = document.documentElement;
+const cssVar    = p => getComputedStyle(root).getPropertyValue(p).trim();
+
+const flowChart = makeChart('flowChart', cssVar('--flow') || '#378ADD', 'Flow',        'L/min');
+const vibrChart = makeChart('vibrChart', cssVar('--vibr') || '#C06DC4', 'Vibration',   'state');
+const turbChart = makeChart('turbChart', cssVar('--turb') || '#1D9E75', 'Turbidity',   'NTU');
+const tempChart = makeChart('tempChart', '#F5A623',                      'Temperature', '°C');
+
+if (vibrChart) {
+  vibrChart.options.scales.y.min = -0.3;
+  vibrChart.options.scales.y.max =  1.3;
+  vibrChart.options.scales.y.ticks.stepSize = 1;
+  vibrChart.data.datasets[0].tension = 0;
+  vibrChart.update();
+}
+
+function push(chart, label, value) {
+  if (!chart) return;
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(value);
+  if (chart.data.labels.length > MAX) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+  }
+  chart.update('none');
+}
+
+// ─────────────────────────────────────────────
+//  UI HELPERS
+// ─────────────────────────────────────────────
+function addLog(msg, warn) {
+  const log = document.getElementById('log');
+  const now = new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const row = document.createElement('div');
+  row.className = 'entry';
+  row.innerHTML = '<span class="ts">' + now + '</span><span class="msg' + (warn ? ' warn' : '') + '">' + msg + '</span>';
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+  if (log.children.length > 200) log.removeChild(log.firstChild);
+}
+
+function setStatus(state) {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('status-txt');
+  dot.className = 'dot ' + state;
+  const map = { live: 'Connected — receiving', error: 'Connection failed', '': 'Connecting…' };
+  txt.textContent = map[state] || 'Connecting…';
+}
+
+function setOfflineAlert(show) {
+  const el = document.getElementById('offline-alert');
+  if (el) el.classList.toggle('show', show);
+}
+
+// ─────────────────────────────────────────────
+//  SENSOR DATA PROCESSING  (unchanged from original)
+// ─────────────────────────────────────────────
+let lastOnline = null;
+let lastOnlineDisplay = null;
+
+function processSensorData(topic, raw, timestamp, sequence) {
+  let data, isJson;
+  try {
+    const parsed = JSON.parse(raw);
+    data   = typeof parsed === 'object' && parsed !== null ? parsed : { value: parsed };
+    isJson = true;
+  } catch {
+    data   = { value: raw };
+    isJson = false;
+  }
+
+  const entry = { topic, value: null, raw, timestamp };
+  let anyUpdated = false;
+  let logMsg = '';
+  const time = new Date(timestamp).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+  if (isJson) {
+    entry.value = raw;
+    const sensors = [
+      { keys: ['flow','f','flow_rate','lpm'],                            chart: flowChart, el: 'c-flow',      unit: 'L/min', fmt: 1 },
+      { keys: ['state','vibration','vibr','v','freq','hz','amp'],        chart: vibrChart, el: 'c-vibr',      unit: '',      fmt: 0 },
+      { keys: ['turbidity','turb','t','ntu','raw','ntu_raw'],            chart: turbChart, el: 'c-turb',      unit: 'NTU',   fmt: 1 },
+      { keys: ['seq','sequence','id','packet'],                          chart: null,      el: 'c-seq',       unit: '',      fmt: 0 },
+      { keys: ['rssi','signal','dbm','rss','sig'],                       chart: null,      el: 'c-rssi',      unit: 'dBm',   fmt: 0 },
+      { keys: ['temp','temperature','t','T'],                            chart: tempChart, el: 'c-temp',      unit: '°C',    fmt: 1, offset: TEMP_OFFSET },
+    ];
+    const foundParts = [];
+
+    for (const s of sensors) {
+      let val;
+      for (const k of s.keys) { val = parseFloat(data[k]); if (!isNaN(val)) break; }
+      if (isNaN(val)) continue;
+      if (s.offset) val -= s.offset;
+      if (s.chart) push(s.chart, time, val);
+      if (s.unit) {
+        document.getElementById(s.el).innerHTML = val.toFixed(s.fmt) + '<span class="card-unit">' + s.unit + '</span>';
+      } else {
+        document.getElementById(s.el).textContent = val.toFixed(s.fmt);
+      }
+      const label = s.keys[0] === 'vibration' ? 'vibr' : s.keys[0] === 'turbidity' ? 'turb' : s.keys[0] === 'flow' ? 'flow' : s.keys[0];
+      foundParts.push(label + '=' + val.toFixed(s.fmt));
+      anyUpdated = true;
+    }
+
+    // Vibration topic fallback — try any numeric field
+    if (!anyUpdated && topic === 'sensors/vibration') {
+      for (const k in data) {
+        const v = parseFloat(data[k]);
+        if (!isNaN(v) && typeof data[k] === 'number') {
+          push(vibrChart, time, v);
+          document.getElementById('c-vibr').innerHTML = v.toFixed(1) + '<span class="card-unit">Hz</span>';
+          document.getElementById('c-seq').textContent = sequence;
+          foundParts.push('vibr=' + v.toFixed(1) + ' (~' + k + ')');
+          anyUpdated = true;
+          break;
+        }
+      }
+    }
+
+    // Gateway status
+    if (topic === 'sensors/gw_status') {
+      const statusVal = data.status;
+      const isOnline  = statusVal === 'online' || statusVal === 'heartbeat' || data.online === true || data.state === 'online' || data.online === 'true';
+      if (isOnline) {
+        lastOnline        = timestamp;
+        lastOnlineDisplay = new Date(timestamp).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      }
+      const statusText  = isOnline ? 'ONLINE' : 'OFFLINE';
+      const statusColor = isOnline ? 'var(--turb)' : 'var(--danger)';
+      const lastLine    = lastOnlineDisplay ? '<br><span style="font-size:10px;color:var(--muted);letter-spacing:0.05em;">last online ' + lastOnlineDisplay + '</span>' : '';
+      document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>' + lastLine;
+      setOfflineAlert(!isOnline);
+      foundParts.push('gw=' + (isOnline ? 'online' : 'offline'));
+      anyUpdated = true;
+    }
+
+    // Vibration state display — CALM / VIBRATION
+    if (topic === 'sensors/vibration' && data.state !== undefined) {
+      const stateVal  = parseInt(data.state);
+      const stateText = stateVal === 1 ? 'VIBRATION' : 'CALM';
+      const stateColor = stateVal === 1 ? 'var(--danger)' : 'var(--turb)';
+      const countVal  = data.count !== undefined ? parseInt(data.count) : null;
+      document.getElementById('c-vibr').innerHTML =
+        '<span style="color:' + stateColor + ';font-size:24px;font-weight:500;">' + stateText + '</span>'
+        + (countVal !== null ? '<br><span style="font-size:11px;color:var(--muted);letter-spacing:0.08em;">count=' + countVal + '</span>' : '');
+    }
+
+    logMsg = foundParts.length ? foundParts.join('  ') : '⚠ ' + raw;
+
+  } else {
+    // Plain numeric payload — route by topic
+    const val = parseFloat(raw);
+    if (isNaN(val)) return null;
+    entry.value = val;
+    if      (topic === 'sensors/flow')      { push(flowChart, time, val); document.getElementById('c-flow').innerHTML  = val.toFixed(1) + '<span class="card-unit">L/min</span>'; logMsg = 'flow=' + val.toFixed(1); }
+    else if (topic === 'sensors/vibration') { push(vibrChart, time, val); document.getElementById('c-vibr').innerHTML  = val.toFixed(1) + '<span class="card-unit">Hz</span>';   logMsg = 'vibr=' + val.toFixed(1); }
+    else if (topic === 'sensors/turbidity') { push(turbChart, time, val); document.getElementById('c-turb').innerHTML  = val.toFixed(1) + '<span class="card-unit">NTU</span>';  logMsg = 'turb=' + val.toFixed(1); }
+    else { return null; }
+    document.getElementById('c-seq').textContent = sequence;
+    anyUpdated = true;
+  }
+
+  if (!anyUpdated) return null;
+  return { logMsg, entry };
+}
+
+// ─────────────────────────────────────────────
+//  MQTT
+// ─────────────────────────────────────────────
+let mqttClient = null;
+let seq = 0;
+
+function connectMQTT() {
+  if (mqttClient && mqttClient.connected) return;
+
+  mqttClient = mqtt.connect(MQTT_WS, {
+    clientId:        CLIENT_ID,
+    clean:           true,
+    keepalive:       60,
+    reconnectPeriod: 3000,
+    connectTimeout:  10000,
+  });
+
+  mqttClient.on('connect', () => {
+    setStatus('live');
+    addLog('MQTT connected to broker.emqx.io');
+    for (const t of TOPICS) mqttClient.subscribe(t, { qos: 1 });
+  });
+
+  mqttClient.on('message', (topic, payload) => {
+    seq++;
+    const raw       = payload.toString();
+    const timestamp = new Date().toISOString();
+
+    const result = processSensorData(topic, raw, timestamp, seq);
+    if (!result) {
+      addLog('⚠ RAW: ' + raw + '  (topic=' + topic + ')', true);
+      return;
+    }
+
+    saveDB(result.entry);   // saves + increments localCount + maybe prunes
+    addLog(result.logMsg + '  seq=' + seq);
+  });
+
+  mqttClient.on('error',   err => addLog('MQTT error: ' + (err.message || err), true));
+  mqttClient.on('close',   ()  => { if (document.getElementById('dot').className.includes('live')) { setStatus('error'); addLog('MQTT disconnected.', true); } });
+  mqttClient.on('offline', ()  => { setStatus('error'); addLog('MQTT offline — reconnecting…', true); });
+}
+
+// ─────────────────────────────────────────────
+//  EXPORT / IMPORT
+// ─────────────────────────────────────────────
+async function exportCSV() {
+  const data = await getAllDB();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const header = 'ID,Timestamp,Topic,Value,Raw';
+  const rows   = data.map(r =>
+    r.id + ',"' + r.timestamp + '","' + r.topic + '","' + r.value + '","' + (r.raw || '').replace(/"/g, '""') + '"'
+  );
+  const blob = new Blob(['\uFEFF' + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  addLog('Exported ' + data.length + ' rows as CSV.');
+}
+
+async function exportJSON() {
+  const data = await getAllDB();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  addLog('Exported ' + data.length + ' entries as JSON.');
+}
+
+function importJSON(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const arr = JSON.parse(e.target.result);
+      if (!Array.isArray(arr) || !arr.length) { addLog('Invalid or empty JSON.', true); return; }
+      for (const entry of arr) {
+        saveDB({
+          topic:     entry.topic     || '',
+          value:     entry.value     || '',
+          raw:       entry.raw       || entry.value || '',
+          timestamp: entry.timestamp || new Date().toISOString(),
+        });
+      }
+      addLog('Imported ' + arr.length + ' entries.');
+    } catch (err) {
+      addLog('Import failed: ' + err.message, true);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ─────────────────────────────────────────────
+//  BOOT
+//  Sign in anonymously first — everything else
+//  starts inside the .then() of signInAnonymously()
+//  so we never touch Firebase before auth is ready.
+// ─────────────────────────────────────────────
+signInAnonymously();
 </script>
 </body>
 </html>
