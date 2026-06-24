@@ -536,13 +536,18 @@ function processSensorData(topic, raw, timestamp, sequence) {
       }
     }
 
-    // Gateway status — show ONLINE / OFFLINE
+    // Gateway status — show ONLINE / OFFLINE + last online time
     if (topic === 'sensors/gw_status') {
       const statusVal = data.status;
       const isOnline = statusVal === 'online' || statusVal === 'heartbeat' || data.online === true || data.state === 'online' || data.online === 'true';
+      if (isOnline) {
+        lastOnline = timestamp;
+        lastOnlineDisplay = new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
       const statusText = isOnline ? 'ONLINE' : 'OFFLINE';
       const statusColor = isOnline ? 'var(--turb)' : 'var(--danger)';
-      document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>';
+      const lastLine = lastOnlineDisplay ? '<br><span style="font-size:10px;color:var(--muted);letter-spacing:0.05em;">last online ' + lastOnlineDisplay + '</span>' : '';
+      document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>' + lastLine;
       setOfflineAlert(!isOnline);
       foundParts.push('gw=' + (isOnline ? 'online' : 'offline'));
       anyUpdated = true;
@@ -581,6 +586,8 @@ function processSensorData(topic, raw, timestamp, sequence) {
 
 let mqttClient = null;
 let seq = 0;
+let lastOnline = null;
+let lastOnlineDisplay = null;
 
 function connectMQTT() {
   if (mqttClient && mqttClient.connected) return;
