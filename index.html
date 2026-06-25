@@ -1242,15 +1242,20 @@ function pruneOldEntries() {
 function loadHistoricalData() {
   if (!authReady) return;
 
-  dbRef.orderByChild('timestamp')
+  // Use orderByKey() — Firebase push IDs are inherently time-ordered,
+  // so limitToLast gives us the most recent records without needing an
+  // .indexOn rule in Firebase or downloading the entire database.
+  dbRef.orderByKey()
     .limitToLast(HISTORY_LIMIT)
     .once('value', snap => {
       if (!snap.exists()) return;
+      const total = snap.numChildren();
       const rows = [];
       snap.forEach(child => rows.push(child.val()));
 
       let loaded = 0;
       rows.forEach((entry, i) => {
+        if (!entry.topic || !entry.raw && !entry.value) return;
         const result = processSensorData(
           entry.topic,
           entry.raw || String(entry.value),
@@ -1259,7 +1264,7 @@ function loadHistoricalData() {
         );
         if (result) loaded++;
       });
-      addLog('Loaded last ' + loaded + ' records from Firebase.');
+      addLog('Loaded ' + loaded + '/' + total + ' records from Firebase.');
     });
 }
 
@@ -1268,7 +1273,9 @@ function loadHistoricalData() {
 // 8 GB into the browser just because someone clicked "JSON".
 function getAllDB() {
   if (!authReady) return Promise.resolve([]);
-  return dbRef.orderByChild('timestamp')
+  // Use orderByKey() for the same reason as loadHistoricalData —
+  // push keys are time-sorted and need no index.
+  return dbRef.orderByKey()
     .limitToLast(5000)
     .once('value')
     .then(snapshot => {
