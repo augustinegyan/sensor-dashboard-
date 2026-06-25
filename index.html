@@ -1248,14 +1248,16 @@ function loadHistoricalData() {
       snap.forEach(child => rows.push(child.val()));
 
       let loaded = 0;
+      let skipped = 0;
       rows.forEach((entry, i) => {
-        if (!entry.topic || !entry.raw && !entry.value) return;
+        if (!entry.topic) { skipped++; return; }
+        if (!entry.raw && !entry.value) { skipped++; return; }
         loaded++;
         const rawArg = entry.raw || String(entry.value);
         processSensorData(entry.topic, rawArg, entry.timestamp, i + 1);
       });
 
-      addLog('Loaded ' + loaded + '/' + total + ' records from Firebase.');
+      addLog('Loaded ' + loaded + '/' + total + ' records (skipped ' + skipped + ').');
     });
 }
 
