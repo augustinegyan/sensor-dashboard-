@@ -1257,10 +1257,21 @@ function loadHistoricalData() {
       snap.forEach(child => rows.push(child.val()));
 
       let skipped = 0;
+      let debugCount = 0;
       for (let i = 0; i < rows.length; i++) {
         const entry = rows[i];
         if (!entry.topic) { skipped++; continue; }
         if (!entry.raw && !entry.value) { skipped++; continue; }
+        if (debugCount < 3) {
+          try {
+            const sample = JSON.parse(entry.raw || entry.value);
+            const keys = Object.keys(sample).join(',');
+            addLog('SAMPLE #' + i + ': topic="' + entry.topic + '"  keys=[' + keys + ']', true);
+          } catch(e) {
+            addLog('SAMPLE #' + i + ': topic="' + entry.topic + '"  raw=' + (entry.raw || '').slice(0, 80), true);
+          }
+          debugCount++;
+        }
         try {
           const rawArg = entry.raw || String(entry.value);
           processSensorData(entry.topic, rawArg, entry.timestamp, i + 1);
