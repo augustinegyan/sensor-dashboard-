@@ -984,6 +984,7 @@ boot();
     <button class="btn" onclick="exportJSON()">JSON</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(this)" />
     <button class="btn" onclick="document.getElementById('importFile').click()">Import</button>
+    <button class="btn" onclick="pruneOldEntries()" style="color:var(--danger)">Prune</button>
   </div>
 </header>
 
@@ -1086,7 +1087,7 @@ const TEMP_OFFSET  = 12;           // sensor reads ~12°C high inside IP65 enclo
 const HISTORY_LIMIT = 500;         // load last N records (increased to capture all sensor types)
 const PRUNE_DAYS   = 7;            // FIX 3: delete records older than this
 const PRUNE_BATCH  = 50;           // delete at most this many per prune run
-const PRUNE_CHANCE = 0.05;         // FIX 3: run prune on ~5% of incoming packets
+const PRUNE_CHANCE = 0;            // auto-prune disabled (was eating historical data)
 
 // ─────────────────────────────────────────────
 //  FIREBASE INIT
@@ -1211,8 +1212,7 @@ function saveDB(entry) {
   dbRef.push(entry);
   updateDBCount(1);
 
-  // FIX 3: Probabilistic prune — runs ~5% of the time so we
-  // don't hammer Firebase with delete queries on every packet.
+  // Auto-prune disabled (PRUNE_CHANCE=0). Click the Prune button to manually delete old records.
   if (Math.random() < PRUNE_CHANCE) pruneOldEntries();
 }
 
@@ -1225,13 +1225,24 @@ function pruneOldEntries() {
       if (!snap.exists()) return;
       const updates = {};
       let pruned = 0;
-      snap.forEach(child => { updates[child.key] = null; pruned++; });
+      let skippedNoTimestamp = 0;
+      snap.forEach(child => {
+        const val = child.val();
+        // SAFETY: only delete records that actually have a timestamp field
+        if (!val || !val.timestamp) {
+          skippedNoTimestamp++;
+          return;
+        }
+        updates[child.key] = null;
+        pruned++;
+      });
       if (pruned > 0) {
         dbRef.update(updates);
-        // Subtract pruned count from local counter (rough, but good enough)
         localCount = Math.max(0, localCount - pruned);
         document.getElementById('dbCount').textContent = localCount + ' logged';
-        addLog('Pruned ' + pruned + ' records older than ' + PRUNE_DAYS + ' days.');
+        addLog('Pruned ' + pruned + ' records older than ' + PRUNE_DAYS + ' days.' + (skippedNoTimestamp > 0 ? ' Skipped ' + skippedNoTimestamp + ' records without timestamp.' : ''));
+      } else {
+        addLog('Prune: no old records found.' + (skippedNoTimestamp > 0 ? ' (' + skippedNoTimestamp + ' skipped for missing timestamp)' : ''));
       }
     });
 }
@@ -1249,15 +1260,18 @@ function loadHistoricalData() {
 
       let loaded = 0;
       let skipped = 0;
-      rows.forEach((entry, i) => {
-        if (!entry.topic) { skipped++; return; }
-        if (!entry.raw && !entry.value) { skipped++; return; }
+      for (let i = 0; i < rows.length; i++) {
+        const entry = rows[i];
+        if (!entry.topic) { skipped++; continue; }
+        if (!entry.raw && !entry.value) { skipped++; continue; }
         loaded++;
-        const rawArg = entry.raw || String(entry.value);
-        processSensorData(entry.topic, rawArg, entry.timestamp, i + 1);
-      });
+        try {
+          const rawArg = entry.raw || String(entry.value);
+          processSensorData(entry.topic, rawArg, entry.timestamp, i + 1);
+        } catch(e) { /* skip bad records */ }
+      }
 
-      addLog('Loaded ' + loaded + '/' + total + ' records (skipped ' + skipped + ').');
+      addLog('Loaded ' + loaded + '/' + total + ' records from Firebase' + (skipped > 0 ? ' (' + skipped + ' skipped)' : '') + '.');
     });
 }
 
