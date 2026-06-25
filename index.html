@@ -1250,41 +1250,54 @@ function loadHistoricalData() {
       const rows = [];
       snap.forEach(child => rows.push(child.val()));
 
-      // DEBUG: log first 3 records to console so you can see their structure
-      console.log('===== DEBUG: Firebase records (first 3) =====');
-      for (let i = 0; i < Math.min(3, rows.length); i++) {
-        console.log('Record ' + i + ':', JSON.parse(JSON.stringify(rows[i])));
-        console.log('  - topic:    ', rows[i].topic, '(type=' + typeof rows[i].topic + ')');
-        console.log('  - raw:      ', rows[i].raw, '(type=' + typeof rows[i].raw + ', length=' + (rows[i].raw ? String(rows[i].raw).length : 0) + ')');
-        console.log('  - value:    ', rows[i].value, '(type=' + typeof rows[i].value + ')');
-        console.log('  - timestamp:', rows[i].timestamp, '(type=' + typeof rows[i].timestamp + ')');
+      // DEBUG: show record structures + first failure detail
+      console.log('===== DEBUG: Firebase records (first 5) =====');
+      let firstFailIdx = -1;
+      for (let i = 0; i < Math.min(5, rows.length); i++) {
+        const e = rows[i];
+        console.log('Record ' + i + ':', JSON.parse(JSON.stringify(e)));
+        console.log('  topic=' + e.topic + '  raw(type=' + typeof e.raw + ',len=' + (e.raw ? String(e.raw).length : 0) + ')  value(type=' + typeof e.value + ')');
       }
 
       let loaded    = 0;
-      let failedSeq = 0;
       rows.forEach((entry, i) => {
         if (!entry.topic || !entry.raw && !entry.value) return;
-
         const rawArg = entry.raw || String(entry.value);
-        // DEBUG: log the raw argument we're passing
-        if (i < 5) console.log('Passing rawArg[' + i + ']:', rawArg, '(type=' + typeof rawArg + ')');
-
-        const result = processSensorData(
-          entry.topic,
-          rawArg,
-          entry.timestamp,
-          i + 1
-        );
+        const result = processSensorData(entry.topic, rawArg, entry.timestamp, i + 1);
         if (result) {
           loaded++;
-          if (i < 5) console.log('  -> SUCCESS: ' + result.logMsg);
-        } else {
-          failedSeq++;
-          if (failedSeq <= 5) {
-            console.log('  -> FAILED reason: isJson=' + (() => { try { JSON.parse(rawArg); return true; } catch(e) { return false; } })() + ', anyUpdated would be false');
-          }
+        } else if (firstFailIdx < 0) {
+          firstFailIdx = i;
         }
       });
+
+      // Show the first FAILING record's structure
+      if (firstFailIdx >= 0) {
+        const bad = rows[firstFailIdx];
+        console.log('===== FIRST FAILING record (#' + firstFailIdx + ') =====');
+        console.log(JSON.parse(JSON.stringify(bad)));
+        console.log('  topic:', bad.topic);
+        console.log('  raw:', bad.raw, '(type=' + typeof bad.raw + ', len=' + (bad.raw ? String(bad.raw).length : 0) + ')');
+        console.log('  value:', bad.value, '(type=' + typeof bad.value + ')');
+        // Also try to process it manually to see why
+        const rawArg = bad.raw || String(bad.value);
+        let willParse;
+        try { JSON.parse(rawArg); willParse = true; } catch(e) { willParse = false; }
+        console.log('  rawArg:', rawArg, '(type=' + typeof rawArg + ')  JSON.parse OK=' + willParse);
+        if (willParse) {
+          const parsed = JSON.parse(rawArg);
+          const keys = Object.keys(parsed);
+          console.log('  parsed keys:', keys);
+          // Check which of our known keys exist
+          const knownKeys = ['flow','f','flow_rate','lpm','state','vibration','vibr','v','freq','hz','amp','turbidity','turb','t','ntu','raw','ntu_raw','seq','sequence','id','packet','rssi','signal','dbm','rss','sig','temp','temperature'];
+          const matched = knownKeys.filter(k => parsed[k] !== undefined);
+          console.log('  matched known keys:', matched);
+          if (matched.length === 0) {
+            console.log('  >>> REASON: No sensor keys found in this record!');
+          }
+        }
+      }
+
       console.log('===== DEBUG end: ' + loaded + '/' + total + ' OK, ' + (total - loaded) + ' failed =====');
       addLog('Loaded ' + loaded + '/' + total + ' records from Firebase.');
     });
