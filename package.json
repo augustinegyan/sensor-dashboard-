@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "mqtt": "^5.15.1"
+    "mqtt": "^5.15.1",
+    "@supabase/supabase-js": "^2.49.1"
   }
 }

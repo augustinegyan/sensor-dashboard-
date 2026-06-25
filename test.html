@@ -1,0 +1,385 @@
+// ─────────────────────────────────────────────
+//   CONSTANTS
+// ─────────────────────────────────────────────
+const MAX     = 500; // Increased to 500 to accommodate the loaded history
+const MQTT_WS = 'wss://broker.emqx.io:8084/mqtt';
+const CLIENT_ID = 'dashboard_web_' + Math.random().toString(16).slice(2, 8);
+const TOPICS = ['sensors/flow', 'sensors/vibration', 'sensors/turbidity', 'sensors/environment', 'sensors/gw_status'];
+
+// ── Calibration offsets ──
+const TEMP_OFFSET = 12;
+
+// ── Firebase Realtime Database ──
+const firebaseConfig = {
+  apiKey: "AIzaSyABkKRGYMyE3Gk-AxNa4_3eUGlgK5-vl84",
+  authDomain: "galamsey-a1073.firebaseapp.com",
+  databaseURL: "https://galamsey-a1073-default-rtdb.firebaseio.com",
+  projectId: "galamsey-a1073",
+  storageBucket: "galamsey-a1073.firebasestorage.app",
+  messagingSenderId: "851290999959",
+  appId: "1:851290999959:web:11ad21c699c94b681a6dd2",
+  measurementId: "G-Z5CJKQSSSX"
+};
+firebase.initializeApp(firebaseConfig);
+
+const dbRef = firebase.database().ref('messages');
+
+function saveDB(entry) {
+  dbRef.push(entry);
+}
+
+// MODIFIED: Added limitToLast(500) to fetch only recent records
+function getAllDB() {
+  return dbRef.orderByChild('timestamp').limitToLast(500).once('value')
+    .then(snapshot => {
+      const data = [];
+      snapshot.forEach(child => {
+        data.push({ id: child.key, ...child.val() });
+      });
+      return data;
+    })
+    .catch(() => []);
+}
+
+function countDB() {
+  return dbRef.once('value')
+    .then(snapshot => snapshot.numChildren())
+    .catch(() => 0);
+}
+
+// ── Charts ──
+function makeChart(id, color, label, unit) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  return new Chart(el, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label: label + ' (' + unit + ')',
+      data: [],
+      borderColor: color,
+      backgroundColor: color + '18',
+      borderWidth: 1.5,
+      pointRadius: 3,
+      pointBackgroundColor: color,
+      tension: 0.35,
+      fill: true
+    }]},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" }, maxTicksLimit: 8, maxRotation: 0, autoSkip: true },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" } },
+          grid: { color: 'rgba(128,128,128,0.08)' }
+        }
+      }
+    }
+  });
+}
+
+const root = document.documentElement;
+const flowChart = makeChart('flowChart', getComputedStyle(root).getPropertyValue('--flow').trim() || '#378ADD', 'Flow', 'L/min');
+const vibrChart = makeChart('vibrChart', getComputedStyle(root).getPropertyValue('--vibr').trim() || '#C06DC4', 'Vibration', 'state');
+
+if (vibrChart) {
+  vibrChart.options.scales.y.min = -0.3;
+  vibrChart.options.scales.y.max = 1.3;
+  vibrChart.options.scales.y.ticks.stepSize = 1;
+  vibrChart.data.datasets[0].tension = 0; 
+  vibrChart.update();
+}
+const turbChart = makeChart('turbChart', getComputedStyle(root).getPropertyValue('--turb').trim() || '#1D9E75', 'Turbidity', 'NTU');
+const tempChart = makeChart('tempChart', '#F5A623', 'Temperature', '°C');
+
+// MODIFIED: Added an option to skip the chart update draw call step during loops
+function push(chart, label, value, skipUpdate = false) {
+  if (!chart) return;
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(value);
+  if (chart.data.labels.length > MAX) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+  }
+  if (!skipUpdate) {
+    chart.update('none');
+  }
+}
+
+function addLog(msg, warn) {
+  const log = document.getElementById('log');
+  const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const row = document.createElement('div');
+  row.className = 'entry';
+  row.innerHTML = '<span class="ts">' + now + '</span><span class="msg' + (warn ? ' warn' : '') + '">' + msg + '</span>';
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+  if (log.children.length > 200) log.removeChild(log.firstChild);
+}
+
+function setStatus(state) {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('status-txt');
+  dot.className = 'dot ' + state;
+  const map = { live: 'Connected — receiving', error: 'Connection failed', '': 'Connecting…' };
+  txt.textContent = map[state] || 'Connecting…';
+}
+
+function updateDBCount() {
+  countDB().then(n => { document.getElementById('dbCount').textContent = n + ' logged'; });
+}
+
+function setOfflineAlert(show) {
+  const el = document.getElementById('offline-alert');
+  if (!el) return;
+  el.classList.toggle('show', show);
+}
+
+// MODIFIED: Added skipChartUpdate parameter down to push calls
+function processSensorData(topic, raw, timestamp, sequence, skipChartUpdate = false) {
+  let data, isJson;
+  try {
+    const parsed = JSON.parse(raw);
+    data = typeof parsed === 'object' && parsed !== null ? parsed : { value: parsed };
+    isJson = true;
+  } catch {
+    data = { value: raw };
+    isJson = false;
+  }
+
+  const entry = { topic, value: null, raw, timestamp };
+  let anyUpdated = false;
+  let logMsg = '';
+  const time = new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  if (isJson) {
+    entry.value = raw;
+    const sensors = [
+      { keys: ['flow','f','flow_rate','lpm'],             chart: flowChart, el: 'c-flow',  unit: 'L/min',  fmt: 1 },
+      { keys: ['state','vibration','vibr','v','freq','hz','amp'], chart: vibrChart, el: 'c-vibr', unit: '', fmt: 0 },
+      { keys: ['turbidity','turb','t','ntu','raw','ntu_raw'], chart: turbChart, el: 'c-turb',  unit: 'NTU',     fmt: 1 },
+      { keys: ['seq','sequence','id','packet'],            chart: null,      el: 'c-seq',   unit: '',       fmt: 0 },
+      { keys: ['rssi','signal','dbm','rss','sig'],         chart: null,      el: 'c-rssi',  unit: 'dBm',    fmt: 0 },
+      { keys: ['temp','temperature','t','T'],               chart: tempChart, el: 'c-temp',  unit: '°C',     fmt: 1, offset: TEMP_OFFSET },
+    ];
+    const foundParts = [];
+
+    for (const s of sensors) {
+      let val;
+      for (const k of s.keys) { val = parseFloat(data[k]); if (!isNaN(val)) break; }
+      if (isNaN(val)) continue;
+      if (s.offset) val -= s.offset;
+      if (s.chart) push(s.chart, time, val, skipChartUpdate);
+      if (s.unit) {
+        document.getElementById(s.el).innerHTML = val.toFixed(s.fmt) + '<span class="card-unit">' + s.unit + '</span>';
+      } else {
+        document.getElementById(s.el).textContent = val.toFixed(s.fmt);
+      }
+      const label = s.keys[0] === 'vibration' ? 'vibr' : s.keys[0] === 'turbidity' ? 'turb' : s.keys[0] === 'flow' ? 'flow' : s.keys[0];
+      foundParts.push(label + '=' + val.toFixed(s.fmt));
+      anyUpdated = true;
+    }
+
+    if (!anyUpdated && topic === 'sensors/vibration') {
+      for (const k in data) {
+        const v = parseFloat(data[k]);
+        if (!isNaN(v) && typeof data[k] === 'number') {
+          push(vibrChart, time, v, skipChartUpdate);
+          document.getElementById('c-vibr').innerHTML = v.toFixed(1) + '<span class="card-unit">Hz</span>';
+          document.getElementById('c-seq').textContent = sequence;
+          foundParts.push('vibr=' + v.toFixed(1) + ' (~' + k + ')');
+          anyUpdated = true;
+          break;
+        }
+      }
+    }
+
+    if (topic === 'sensors/gw_status') {
+      const statusVal = data.status;
+      const isOnline = statusVal === 'online' || statusVal === 'heartbeat' || data.online === true || data.state === 'online' || data.online === 'true';
+      if (isOnline) {
+        lastOnline = timestamp;
+        lastOnlineDisplay = new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+      const statusText = isOnline ? 'ONLINE' : 'OFFLINE';
+      const statusColor = isOnline ? 'var(--turb)' : 'var(--danger)';
+      const lastLine = lastOnlineDisplay ? '<br><span style="font-size:10px;color:var(--muted);letter-spacing:0.05em;">last online ' + lastOnlineDisplay + '</span>' : '';
+      document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>' + lastLine;
+      setOfflineAlert(!isOnline);
+      foundParts.push('gw=' + (isOnline ? 'online' : 'offline'));
+      anyUpdated = true;
+    }
+
+    if (topic === 'sensors/vibration' && data.state !== undefined) {
+      const stateVal = parseInt(data.state);
+      const stateText = stateVal === 1 ? 'VIBRATION' : 'CALM';
+      const stateColor = stateVal === 1 ? 'var(--danger)' : 'var(--turb)';
+      const countVal = data.count !== undefined ? parseInt(data.count) : null;
+      document.getElementById('c-vibr').innerHTML = '<span style="color:' + stateColor + ';font-size:24px;font-weight:500;">' + stateText + '</span>'
+        + (countVal !== null ? '<br><span style="font-size:11px;color:var(--muted);letter-spacing:0.08em;">count=' + countVal + '</span>' : '');
+    }
+
+    logMsg = foundParts.length ? foundParts.join('  ') : '⚠ ' + raw;
+  } else {
+    const val = parseFloat(raw);
+    if (isNaN(val)) return null;
+    entry.value = val;
+    if (topic === 'sensors/flow')       { push(flowChart, time, val, skipChartUpdate); document.getElementById('c-flow').innerHTML  = val.toFixed(1) + '<span class="card-unit">L/min</span>'; logMsg = 'flow=' + val.toFixed(1); }
+    else if (topic === 'sensors/vibration') { push(vibrChart, time, val, skipChartUpdate); document.getElementById('c-vibr').innerHTML = val.toFixed(1) + '<span class="card-unit">Hz</span>'; logMsg = 'vibr=' + val.toFixed(1); }
+    else if (topic === 'sensors/turbidity') { push(turbChart, time, val, skipChartUpdate); document.getElementById('c-turb').innerHTML = val.toFixed(1) + '<span class="card-unit">NTU</span>'; logMsg = 'turb=' + val.toFixed(1); }
+    else { return null; }
+    document.getElementById('c-seq').textContent = sequence;
+    anyUpdated = true;
+  }
+
+  if (!anyUpdated) return null;
+  return { logMsg, entry };
+}
+
+// ── MQTT ──
+let mqttClient = null;
+let seq = 0;
+let lastOnline = null;
+let lastOnlineDisplay = null;
+
+function connectMQTT() {
+  if (mqttClient && mqttClient.connected) return;
+
+  mqttClient = mqtt.connect(MQTT_WS, {
+    clientId: CLIENT_ID,
+    clean: true,
+    keepalive: 60,
+    reconnectPeriod: 3000,
+    connectTimeout: 10000,
+  });
+
+  mqttClient.on('connect', () => {
+    setStatus('live');
+    addLog('MQTT connected to broker.emqx.io');
+    for (const t of TOPICS) {
+      mqttClient.subscribe(t, { qos: 1 });
+    }
+  });
+
+  mqttClient.on('message', (topic, payload) => {
+    seq++;
+    const raw  = payload.toString();
+    const timestamp = new Date().toISOString();
+
+    const result = processSensorData(topic, raw, timestamp, seq, false);
+    if (!result) {
+      addLog('⚠ RAW: ' + raw + '  (topic=' + topic + ')', true);
+      return;
+    }
+
+    saveDB(result.entry);
+    updateDBCount();
+    addLog(result.logMsg + '  seq=' + seq);
+  });
+
+  mqttClient.on('error', (err) => {
+    addLog('MQTT error: ' + (err.message || err), true);
+  });
+
+  mqttClient.on('close', () => {
+    if (document.getElementById('dot').className.includes('live')) {
+      setStatus('error');
+      addLog('MQTT disconnected.', true);
+    }
+  });
+
+  mqttClient.on('offline', () => {
+    setStatus('error');
+    addLog('MQTT offline — reconnecting…', true);
+  });
+}
+
+// ── Export / Import ──
+async function exportCSV() {
+  const data = await getAllDB();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const header = 'ID,Timestamp,Topic,Value,Raw';
+  const rows = data.map(r => r.id + ',"' + r.timestamp + '","' + r.topic + '","' + r.value + '","' + (r.raw || '').replace(/"/g, '""') + '"');
+  const blob = new Blob(['\uFEFF' + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(blob);
+  addLog('Exported ' + data.length + ' rows as CSV.');
+}
+
+async function exportJSON() {
+  const data = await getAllDB();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(blob);
+  addLog('Exported ' + data.length + ' entries as JSON.');
+}
+
+function importJSON(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const arr = JSON.parse(e.target.result);
+      if (!Array.isArray(arr) || !arr.length) { addLog('Invalid or empty JSON.', true); return; }
+      for (const entry of arr) {
+        saveDB({
+          topic: entry.topic || '',
+          value: entry.value || '',
+          raw: entry.raw || entry.value || '',
+          timestamp: entry.timestamp || new Date().toISOString(),
+        });
+      }
+      addLog('Imported ' + arr.length + ' entries.');
+      updateDBCount();
+    } catch (err) {
+      addLog('Import failed: ' + err.message, true);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// MODIFIED: Silenced rapid updates inside loop, then batched an update call at the end
+function loadHistoricalData() {
+  getAllDB().then(data => {
+    if (!data.length) return;
+    
+    for (const entry of data) {
+      seq++;
+      // Pass 'true' to hold back rendering layout shifts during execution loop
+      processSensorData(entry.topic, entry.raw || entry.value, entry.timestamp, seq, true);
+    }
+    
+    // Trigger singular unified render calls across instances now that arrays match data criteria
+    if (flowChart) flowChart.update();
+    if (vibrChart) vibrChart.update();
+    if (turbChart) turbChart.update();
+    if (tempChart) tempChart.update();
+
+    addLog('Loaded ' + data.length + ' historical records from Firebase.');
+    updateDBCount();
+  });
+}
+
+// ── Boot ──
+function boot() {
+  updateDBCount();
+  connectMQTT();
+  loadHistoricalData();
+}
+
+boot();
+</script>

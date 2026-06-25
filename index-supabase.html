@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sys_Test Environment — Supabase</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.4/dist/mqtt.min.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f5f4f0;
+    --surface:   #ffffff;
+    --surface2:  #eeede9;
+    --border:    rgba(0,0,0,0.10);
+    --text:      #1a1a18;
+    --muted:     #6b6a66;
+    --flow:      #378ADD;
+    --turb:      #1D9E75;
+    --vibr:      #C06DC4;
+    --danger:    #D85A30;
+    --rad:       10px;
+    --font:      'IBM Plex Mono', monospace;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:      #141413;
+      --surface: #1e1e1c;
+      --surface2:#272725;
+      --border:  rgba(255,255,255,0.09);
+      --text:    #e8e7e3;
+      --muted:   #888780;
+    }
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 2rem;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s;
+  }
+  .dot.live  { background: var(--turb); }
+  .dot.error { background: var(--danger); }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1rem 1.25rem;
+  }
+
+  .card-label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .card-value {
+    font-size: 28px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .card-unit {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 4px;
+  }
+
+  .chart-block {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .chart-swatch {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+  }
+
+  .chart-title {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 220px;
+  }
+
+  .log-block {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--rad);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .log-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  #log {
+    height: 140px;
+    overflow-y: auto;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  #log .entry { display: flex; gap: 12px; }
+  #log .ts    { color: var(--muted); min-width: 72px; flex-shrink: 0; }
+  #log .msg   { color: var(--text); }
+  #log .warn  { color: var(--danger); }
+
+  footer {
+    margin-top: 2rem;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+
+  footer a {
+    color: var(--muted);
+    text-decoration: underline 0.5px dotted;
+  }
+
+  .btn {
+    background: transparent;
+    border: 0.5px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: var(--font);
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover  { background: var(--surface2); }
+  .btn:active { opacity: 0.7; }
+
+  #offline-alert {
+    display: none;
+    background: var(--danger);
+    color: #fff;
+    text-align: center;
+    padding: 10px 1.25rem;
+    border-radius: var(--rad);
+    margin-bottom: 1.5rem;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  #offline-alert.show { display: block; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.7; }
+  }
+
+  .badge {
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--surface2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#9670; SYS_Test_Environment <span class="badge">Supabase</span></h1>
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="status-txt">Connecting…</span>
+    </div>
+    <button class="btn" onclick="exportCSV()">CSV</button>
+    <button class="btn" onclick="exportJSON()">JSON</button>
+  </div>
+</header>
+
+<div id="offline-alert">⚠ Gateway Offline</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Flow rate</div>
+    <div class="card-value" id="c-flow">—<span class="card-unit">L/min</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Vibration</div>
+    <div class="card-value" id="c-vibr">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Turbidity</div>
+    <div class="card-value" id="c-turb">—<span class="card-unit">NTU</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Packet #</div>
+    <div class="card-value" id="c-seq">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Signal (RSSI)</div>
+    <div class="card-value" id="c-rssi">—<span class="card-unit">dBm</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gateway Temp</div>
+    <div class="card-value" id="c-temp">—<span class="card-unit">°C</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gateway Status</div>
+    <div class="card-value" id="c-gw-status" style="font-size:22px;">—</div>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--flow)"></span>
+    <span class="chart-title">Flow rate — L/min</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="flowChart" role="img" aria-label="Flow rate over time"></canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--vibr)"></span>
+    <span class="chart-title">Vibration — State (0=calm · 1=vibration)</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="vibrChart" role="img" aria-label="Vibration over time"></canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:var(--turb)"></span>
+    <span class="chart-title">Turbidity — NTU</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="turbChart" role="img" aria-label="Turbidity over time"></canvas>
+  </div>
+</div>
+
+<div class="chart-block">
+  <div class="chart-header">
+    <span class="chart-swatch" style="background:#F5A623;opacity:0.8"></span>
+    <span class="chart-title">Gateway Temperature — °C</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="tempChart" role="img" aria-label="Temperature over time"></canvas>
+  </div>
+</div>
+
+<div class="log-block">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:0.75rem;">
+    <span class="log-title" style="margin-bottom:0;">Raw log</span>
+    <span id="dbCount" style="font-size:11px; color:var(--muted); margin-left:auto;">0 logged</span>
+  </div>
+  <div id="log"></div>
+</div>
+
+<footer>
+  broker.emqx.io:8084 &nbsp;·&nbsp;
+  sensors/flow + sensors/vibration + sensors/turbidity + sensors/environment + sensors/gw_status &nbsp;·&nbsp;
+  hosted on <a href="https://vercel.com">Vercel</a> &nbsp;·&nbsp; Supabase
+</footer>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONSTANTS
+// ─────────────────────────────────────────────
+const MAX          = 60;
+const MQTT_WS      = 'wss://broker.emqx.io:8084/mqtt';
+const CLIENT_ID    = 'dashboard_web_' + Math.random().toString(16).slice(2, 8);
+const TOPICS       = ['sensors/flow','sensors/vibration','sensors/turbidity','sensors/environment','sensors/gw_status'];
+const TEMP_OFFSET  = 12;
+const API_BASE     = '/api';   // Vercel serverless functions
+
+// ─────────────────────────────────────────────
+//  SUPABASE API HELPERS
+//  Keys are in Vercel env vars, never in the browser
+// ─────────────────────────────────────────────
+
+// Save a sensor reading to Supabase via Vercel API
+async function saveToSupabase(entry) {
+  try {
+    const res = await fetch(API_BASE + '/save-sensor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  } catch (err) {
+    addLog('DB save failed: ' + err.message, true);
+    return null;
+  }
+}
+
+// Load historical data from Supabase via Vercel API
+async function loadHistoryFromSupabase(limit) {
+  try {
+    const res = await fetch(API_BASE + '/get-history?limit=' + (limit || 500));
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    return result.data || [];
+  } catch (err) {
+    addLog('History load failed: ' + err.message, true);
+    return [];
+  }
+}
+
+// Poll latest gateway status + temperature
+async function pollLatestStatus() {
+  try {
+    const res = await fetch(API_BASE + '/poll-status');
+    if (!res.ok) throw new Error(await res.text());
+    return await res.json();
+  } catch (err) {
+    addLog('Poll status failed: ' + err.message, true);
+    return null;
+  }
+}
+
+// Get total count from Supabase
+async function getTotalCount() {
+  try {
+    const res = await fetch(API_BASE + '/get-history?limit=1');
+    if (!res.ok) return 0;
+    const result = await res.json();
+    return result.total || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  CHARTS
+// ─────────────────────────────────────────────
+function makeChart(id, color, label, unit) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  return new Chart(el, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label: label + ' (' + unit + ')',
+      data: [],
+      borderColor: color,
+      backgroundColor: color + '18',
+      borderWidth: 1.5,
+      pointRadius: 3,
+      pointBackgroundColor: color,
+      tension: 0.35,
+      fill: true
+    }]},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" }, maxTicksLimit: 8, maxRotation: 0, autoSkip: true },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { font: { size: 11, family: "'IBM Plex Mono', monospace" } },
+          grid: { color: 'rgba(128,128,128,0.08)' }
+        }
+      }
+    }
+  });
+}
+
+const root      = document.documentElement;
+const cssVar    = p => getComputedStyle(root).getPropertyValue(p).trim();
+
+const flowChart = makeChart('flowChart', cssVar('--flow') || '#378ADD', 'Flow',        'L/min');
+const vibrChart = makeChart('vibrChart', cssVar('--vibr') || '#C06DC4', 'Vibration',   'state');
+const turbChart = makeChart('turbChart', cssVar('--turb') || '#1D9E75', 'Turbidity',   'NTU');
+const tempChart = makeChart('tempChart', '#F5A623',                      'Temperature', '°C');
+
+if (vibrChart) {
+  vibrChart.options.scales.y.min = -0.3;
+  vibrChart.options.scales.y.max =  1.3;
+  vibrChart.options.scales.y.ticks.stepSize = 1;
+  vibrChart.data.datasets[0].tension = 0;
+  vibrChart.update();
+}
+
+let batchLoading = false;
+
+function push(chart, label, value) {
+  if (!chart) return;
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(value);
+  if (chart.data.labels.length > MAX) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+  }
+  if (!batchLoading) chart.update('none');
+}
+
+// ─────────────────────────────────────────────
+//  UI HELPERS
+// ─────────────────────────────────────────────
+let localCount = 0;
+
+function updateDBCount(delta) {
+  if (delta) localCount += delta;
+  document.getElementById('dbCount').textContent = localCount + ' logged';
+}
+
+function addLog(msg, warn) {
+  const log = document.getElementById('log');
+  const now = new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const row = document.createElement('div');
+  row.className = 'entry';
+  row.innerHTML = '<span class="ts">' + now + '</span><span class="msg' + (warn ? ' warn' : '') + '">' + msg + '</span>';
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+  if (log.children.length > 200) log.removeChild(log.firstChild);
+}
+
+function setStatus(state) {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('status-txt');
+  dot.className = 'dot ' + state;
+  const map = { live: 'Connected — receiving', error: 'Connection failed', '': 'Connecting…' };
+  txt.textContent = map[state] || 'Connecting…';
+}
+
+function setOfflineAlert(show) {
+  const el = document.getElementById('offline-alert');
+  if (el) el.classList.toggle('show', show);
+}
+
+// ─────────────────────────────────────────────
+//  SENSOR DATA PROCESSING
+// ─────────────────────────────────────────────
+let lastOnline = null;
+let lastOnlineDisplay = null;
+
+function processSensorData(topic, raw, timestamp, sequence) {
+  let data, isJson;
+  try {
+    const parsed = JSON.parse(raw);
+    data   = typeof parsed === 'object' && parsed !== null ? parsed : { value: parsed };
+    isJson = true;
+  } catch {
+    data   = { value: raw };
+    isJson = false;
+  }
+
+  const entry = { topic, value: null, raw, timestamp };
+  let anyUpdated = false;
+  let logMsg = '';
+  const time = new Date(timestamp).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+  if (isJson) {
+    entry.value = raw;
+    const sensors = [
+      { keys: ['flow','f','flow_rate','lpm'],                            chart: flowChart, el: 'c-flow',      unit: 'L/min', fmt: 1 },
+      { keys: ['state','vibration','vibr','v','freq','hz','amp'],        chart: vibrChart, el: 'c-vibr',      unit: '',      fmt: 0 },
+      { keys: ['turbidity','turb','t','ntu','raw','ntu_raw'],            chart: turbChart, el: 'c-turb',      unit: 'NTU',   fmt: 1 },
+      { keys: ['seq','sequence','id','packet'],                          chart: null,      el: 'c-seq',       unit: '',      fmt: 0 },
+      { keys: ['rssi','signal','dbm','rss','sig'],                       chart: null,      el: 'c-rssi',      unit: 'dBm',   fmt: 0 },
+      { keys: ['temp','temperature','t','T'],                            chart: tempChart, el: 'c-temp',      unit: '°C',    fmt: 1, offset: TEMP_OFFSET },
+    ];
+    const foundParts = [];
+
+    for (const s of sensors) {
+      let val;
+      for (const k of s.keys) { val = parseFloat(data[k]); if (!isNaN(val)) break; }
+      if (isNaN(val)) continue;
+      if (s.offset) val -= s.offset;
+      if (s.chart) push(s.chart, time, val);
+      if (s.unit) {
+        document.getElementById(s.el).innerHTML = val.toFixed(s.fmt) + '<span class="card-unit">' + s.unit + '</span>';
+      } else {
+        document.getElementById(s.el).textContent = val.toFixed(s.fmt);
+      }
+      const label = s.keys[0] === 'vibration' ? 'vibr' : s.keys[0] === 'turbidity' ? 'turb' : s.keys[0] === 'flow' ? 'flow' : s.keys[0];
+      foundParts.push(label + '=' + val.toFixed(s.fmt));
+      anyUpdated = true;
+    }
+
+    if (!anyUpdated && topic === 'sensors/vibration') {
+      for (const k in data) {
+        const v = parseFloat(data[k]);
+        if (!isNaN(v) && typeof data[k] === 'number') {
+          push(vibrChart, time, v);
+          document.getElementById('c-vibr').innerHTML = v.toFixed(1) + '<span class="card-unit">Hz</span>';
+          document.getElementById('c-seq').textContent = sequence;
+          foundParts.push('vibr=' + v.toFixed(1) + ' (~' + k + ')');
+          anyUpdated = true;
+          break;
+        }
+      }
+    }
+
+    if (topic === 'sensors/gw_status') {
+      const statusVal = data.status;
+      const isOnline  = statusVal === 'online' || statusVal === 'heartbeat' || data.online === true || data.state === 'online' || data.online === 'true';
+      if (isOnline) {
+        lastOnline        = timestamp;
+        lastOnlineDisplay = new Date(timestamp).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      }
+      const statusText  = isOnline ? 'ONLINE' : 'OFFLINE';
+      const statusColor = isOnline ? 'var(--turb)' : 'var(--danger)';
+      const lastLine    = lastOnlineDisplay ? '<br><span style="font-size:10px;color:var(--muted);letter-spacing:0.05em;">last online ' + lastOnlineDisplay + '</span>' : '';
+      document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>' + lastLine;
+      setOfflineAlert(!isOnline);
+      foundParts.push('gw=' + (isOnline ? 'online' : 'offline'));
+      anyUpdated = true;
+    }
+
+    if (topic === 'sensors/vibration' && data.state !== undefined) {
+      const stateVal  = parseInt(data.state);
+      const stateText = stateVal === 1 ? 'VIBRATION' : 'CALM';
+      const stateColor = stateVal === 1 ? 'var(--danger)' : 'var(--turb)';
+      const countVal  = data.count !== undefined ? parseInt(data.count) : null;
+      document.getElementById('c-vibr').innerHTML =
+        '<span style="color:' + stateColor + ';font-size:24px;font-weight:500;">' + stateText + '</span>'
+        + (countVal !== null ? '<br><span style="font-size:11px;color:var(--muted);letter-spacing:0.08em;">count=' + countVal + '</span>' : '');
+    }
+
+    logMsg = foundParts.length ? foundParts.join('  ') : '⚠ ' + raw;
+
+  } else {
+    const val = parseFloat(raw);
+    if (isNaN(val)) return null;
+    entry.value = val;
+    if      (topic === 'sensors/flow')      { push(flowChart, time, val); document.getElementById('c-flow').innerHTML  = val.toFixed(1) + '<span class="card-unit">L/min</span>'; logMsg = 'flow=' + val.toFixed(1); }
+    else if (topic === 'sensors/vibration') { push(vibrChart, time, val); document.getElementById('c-vibr').innerHTML  = val.toFixed(1) + '<span class="card-unit">Hz</span>';   logMsg = 'vibr=' + val.toFixed(1); }
+    else if (topic === 'sensors/turbidity') { push(turbChart, time, val); document.getElementById('c-turb').innerHTML  = val.toFixed(1) + '<span class="card-unit">NTU</span>';  logMsg = 'turb=' + val.toFixed(1); }
+    else { return null; }
+    document.getElementById('c-seq').textContent = sequence;
+    anyUpdated = true;
+  }
+
+  if (!anyUpdated) return null;
+  return { logMsg, entry };
+}
+
+// ─────────────────────────────────────────────
+//  MQTT
+// ─────────────────────────────────────────────
+let mqttClient = null;
+let seq = 0;
+
+function connectMQTT() {
+  if (mqttClient && mqttClient.connected) return;
+
+  mqttClient = mqtt.connect(MQTT_WS, {
+    clientId:        CLIENT_ID,
+    clean:           true,
+    keepalive:       60,
+    reconnectPeriod: 3000,
+    connectTimeout:  10000,
+  });
+
+  mqttClient.on('connect', () => {
+    setStatus('live');
+    addLog('MQTT connected to broker.emqx.io');
+    for (const t of TOPICS) mqttClient.subscribe(t, { qos: 1 });
+  });
+
+  mqttClient.on('message', (topic, payload) => {
+    seq++;
+    const raw       = payload.toString();
+    const timestamp = new Date().toISOString();
+
+    const result = processSensorData(topic, raw, timestamp, seq);
+    if (!result) {
+      addLog('⚠ RAW: ' + raw + '  (topic=' + topic + ')', true);
+      return;
+    }
+
+    // Save to Supabase via Vercel API
+    saveToSupabase({ topic, raw, value: result.entry.value, timestamp, seq });
+    updateDBCount(1);
+    addLog(result.logMsg + '  seq=' + seq);
+  });
+
+  mqttClient.on('error',   err => addLog('MQTT error: ' + (err.message || err), true));
+  mqttClient.on('close',   ()  => { if (document.getElementById('dot').className.includes('live')) { setStatus('error'); addLog('MQTT disconnected.', true); } });
+  mqttClient.on('offline', ()  => { setStatus('error'); addLog('MQTT offline — reconnecting…', true); });
+}
+
+// ─────────────────────────────────────────────
+//  10-MINUTE POLLING for gateway status + temperature
+// ─────────────────────────────────────────────
+let pollInterval = null;
+
+function startPolling() {
+  // Immediately fetch on start
+  doPoll();
+  // Then every 10 minutes
+  pollInterval = setInterval(doPoll, 600000); // 10 min
+}
+
+async function doPoll() {
+  const latest = await pollLatestStatus();
+  if (!latest) return;
+
+  if (latest.gateway_status) {
+    const isOnline = latest.gateway_status === 'online' || latest.gateway_status === 'heartbeat';
+    const statusText  = isOnline ? 'ONLINE' : 'OFFLINE';
+    const statusColor = isOnline ? 'var(--turb)' : 'var(--danger)';
+    const ts = latest.gateway_status_at
+      ? new Date(latest.gateway_status_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
+      : '';
+    const lastLine = ts ? '<br><span style="font-size:10px;color:var(--muted);letter-spacing:0.05em;">last online ' + ts + '</span>' : '';
+    document.getElementById('c-gw-status').innerHTML = '<span style="color:' + statusColor + ';font-size:24px;font-weight:500;">' + statusText + '</span>' + lastLine;
+    setOfflineAlert(!isOnline);
+  }
+
+  if (latest.temperature !== null) {
+    const tempVal = (latest.temperature - TEMP_OFFSET).toFixed(1);
+    document.getElementById('c-temp').innerHTML = tempVal + '<span class="card-unit">°C</span>';
+  }
+
+  addLog('Poll: gw=' + (latest.gateway_status || '?') + '  temp=' + (latest.temperature !== null ? (latest.temperature - TEMP_OFFSET).toFixed(1) : '?') + '°C');
+}
+
+// ─────────────────────────────────────────────
+//  HISTORICAL DATA LOAD
+// ─────────────────────────────────────────────
+async function loadHistoricalData() {
+  const rows = await loadHistoryFromSupabase(500);
+  if (!rows.length) {
+    addLog('No historical records found in Supabase.');
+    return;
+  }
+
+  batchLoading = true;
+  for (let i = 0; i < rows.length; i++) {
+    const entry = rows[i];
+    if (!entry.topic) continue;
+    if (!entry.raw && !entry.value) continue;
+    seq++;
+    try {
+      const rawArg = entry.raw || String(entry.value);
+      processSensorData(entry.topic, rawArg, entry.timestamp, seq);
+    } catch(e) { /* skip bad */ }
+  }
+  batchLoading = false;
+
+  if (flowChart) flowChart.update('none');
+  if (vibrChart) vibrChart.update('none');
+  if (turbChart) turbChart.update('none');
+  if (tempChart) tempChart.update('none');
+
+  localCount = rows.length;
+  document.getElementById('dbCount').textContent = localCount + ' logged';
+  addLog('Loaded ' + rows.length + ' records from Supabase.');
+}
+
+// ─────────────────────────────────────────────
+//  EXPORT
+// ─────────────────────────────────────────────
+async function getAllData() {
+  return await loadHistoryFromSupabase(5000);
+}
+
+async function exportCSV() {
+  const data = await getAllData();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const header = 'ID,Timestamp,Topic,Value,Raw';
+  const rows   = data.map(r =>
+    r.id + ',"' + r.timestamp + '","' + r.topic + '","' + r.value + '","' + (r.raw || '').replace(/"/g, '""') + '"'
+  );
+  const blob = new Blob(['\uFEFF' + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  addLog('Exported ' + data.length + ' rows as CSV.');
+}
+
+async function exportJSON() {
+  const data = await getAllData();
+  if (!data.length) { addLog('No data to export.', true); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mqtt_data_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  addLog('Exported ' + data.length + ' entries as JSON.');
+}
+
+// ─────────────────────────────────────────────
+//  BOOT
+// ─────────────────────────────────────────────
+async function boot() {
+  addLog('Starting Supabase dashboard…');
+  await loadHistoricalData();
+  connectMQTT();
+  startPolling();
+}
+
+boot();
+</script>
+</body>
+</html>
