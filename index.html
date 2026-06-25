@@ -1084,7 +1084,6 @@ const MQTT_WS      = 'wss://broker.emqx.io:8084/mqtt';
 const CLIENT_ID    = 'dashboard_web_' + Math.random().toString(16).slice(2, 8);
 const TOPICS       = ['sensors/flow','sensors/vibration','sensors/turbidity','sensors/environment','sensors/gw_status'];
 const TEMP_OFFSET  = 12;           // sensor reads ~12°C high inside IP65 enclosure
-const HISTORY_LIMIT = 500;         // load last N records (increased to capture all sensor types)
 const PRUNE_DAYS   = 7;            // FIX 3: delete records older than this
 const PRUNE_BATCH  = 50;           // delete at most this many per prune run
 const PRUNE_CHANCE = 0;            // auto-prune disabled (was eating historical data)
@@ -1251,7 +1250,6 @@ function loadHistoricalData() {
   if (!authReady) return;
 
   dbRef.orderByKey()
-    .limitToLast(HISTORY_LIMIT)
     .once('value', snap => {
       if (!snap.exists()) return;
       const total = snap.numChildren();
