@@ -1242,9 +1242,6 @@ function pruneOldEntries() {
 function loadHistoricalData() {
   if (!authReady) return;
 
-  // Use orderByKey() — Firebase push IDs are inherently time-ordered,
-  // so limitToLast gives us the most recent records without needing an
-  // .indexOn rule in Firebase or downloading the entire database.
   dbRef.orderByKey()
     .limitToLast(HISTORY_LIMIT)
     .once('value', snap => {
@@ -1253,17 +1250,42 @@ function loadHistoricalData() {
       const rows = [];
       snap.forEach(child => rows.push(child.val()));
 
-      let loaded = 0;
+      // DEBUG: log first 3 records to console so you can see their structure
+      console.log('===== DEBUG: Firebase records (first 3) =====');
+      for (let i = 0; i < Math.min(3, rows.length); i++) {
+        console.log('Record ' + i + ':', JSON.parse(JSON.stringify(rows[i])));
+        console.log('  - topic:    ', rows[i].topic, '(type=' + typeof rows[i].topic + ')');
+        console.log('  - raw:      ', rows[i].raw, '(type=' + typeof rows[i].raw + ', length=' + (rows[i].raw ? String(rows[i].raw).length : 0) + ')');
+        console.log('  - value:    ', rows[i].value, '(type=' + typeof rows[i].value + ')');
+        console.log('  - timestamp:', rows[i].timestamp, '(type=' + typeof rows[i].timestamp + ')');
+      }
+
+      let loaded    = 0;
+      let failedSeq = 0;
       rows.forEach((entry, i) => {
         if (!entry.topic || !entry.raw && !entry.value) return;
+
+        const rawArg = entry.raw || String(entry.value);
+        // DEBUG: log the raw argument we're passing
+        if (i < 5) console.log('Passing rawArg[' + i + ']:', rawArg, '(type=' + typeof rawArg + ')');
+
         const result = processSensorData(
           entry.topic,
-          entry.raw || String(entry.value),
+          rawArg,
           entry.timestamp,
           i + 1
         );
-        if (result) loaded++;
+        if (result) {
+          loaded++;
+          if (i < 5) console.log('  -> SUCCESS: ' + result.logMsg);
+        } else {
+          failedSeq++;
+          if (failedSeq <= 5) {
+            console.log('  -> FAILED reason: isJson=' + (() => { try { JSON.parse(rawArg); return true; } catch(e) { return false; } })() + ', anyUpdated would be false');
+          }
+        }
       });
+      console.log('===== DEBUG end: ' + loaded + '/' + total + ' OK, ' + (total - loaded) + ' failed =====');
       addLog('Loaded ' + loaded + '/' + total + ' records from Firebase.');
     });
 }
