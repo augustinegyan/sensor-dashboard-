@@ -1256,36 +1256,19 @@ function loadHistoricalData() {
       const rows = [];
       snap.forEach(child => rows.push(child.val()));
 
-      let loaded = 0;
-      let skippedNoTopic = 0;
-      let skippedNoRawValue = 0;
-      let debugShown = 0;
+      let skipped = 0;
       for (let i = 0; i < rows.length; i++) {
         const entry = rows[i];
-        if (!entry.topic) {
-          if (debugShown < 2) {
-            addLog('SKIP #' + i + ': no topic. keys=[' + Object.keys(entry).join(',') + ']', true);
-            debugShown++;
-          }
-          skippedNoTopic++;
-          continue;
-        }
-        if (!entry.raw && !entry.value) {
-          if (debugShown < 2) {
-            addLog('SKIP #' + i + ': topic="' + entry.topic + '" no raw/value. keys=[' + Object.keys(entry).join(',') + '] val_type=' + typeof entry.value, true);
-            debugShown++;
-          }
-          skippedNoRawValue++;
-          continue;
-        }
-        loaded++;
+        if (!entry.topic) { skipped++; continue; }
+        if (!entry.raw && !entry.value) { skipped++; continue; }
         try {
           const rawArg = entry.raw || String(entry.value);
           processSensorData(entry.topic, rawArg, entry.timestamp, i + 1);
         } catch(e) { /* skip bad records */ }
       }
 
-      addLog('Loaded ' + loaded + '/' + total + ' (noTopic=' + skippedNoTopic + ', noRawValue=' + skippedNoRawValue + ').');
+      const loaded = total - skipped;
+      addLog('Loaded ' + loaded + '/' + total + ' records from Firebase' + (skipped > 0 ? ' (' + skipped + ' skipped)' : '') + '.');
     });
 }
 
