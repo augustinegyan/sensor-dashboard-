@@ -434,6 +434,8 @@ const turbChart = makeChart('turbChart', getComputedStyle(root).getPropertyValue
 // Temperature chart — shares --flow color but more subdued
 const tempChart = makeChart('tempChart', '#F5A623', 'Temperature', '°C');
 
+let batchLoading = false;   // suppress chart.update() during historical batch load
+
 function push(chart, label, value) {
   if (!chart) return;
   chart.data.labels.push(label);
@@ -442,7 +444,7 @@ function push(chart, label, value) {
     chart.data.labels.shift();
     chart.data.datasets[0].data.shift();
   }
-  chart.update('none');
+  if (!batchLoading) chart.update('none');
 }
 
 function addLog(msg, warn) {
@@ -1256,27 +1258,23 @@ function loadHistoricalData() {
       const rows = [];
       snap.forEach(child => rows.push(child.val()));
 
+      batchLoading = true;
       let skipped = 0;
-      let debugCount = 0;
       for (let i = 0; i < rows.length; i++) {
         const entry = rows[i];
         if (!entry.topic) { skipped++; continue; }
         if (!entry.raw && !entry.value) { skipped++; continue; }
-        if (debugCount < 3) {
-          try {
-            const sample = JSON.parse(entry.raw || entry.value);
-            const keys = Object.keys(sample).join(',');
-            addLog('SAMPLE #' + i + ': topic="' + entry.topic + '"  keys=[' + keys + ']', true);
-          } catch(e) {
-            addLog('SAMPLE #' + i + ': topic="' + entry.topic + '"  raw=' + (entry.raw || '').slice(0, 80), true);
-          }
-          debugCount++;
-        }
         try {
           const rawArg = entry.raw || String(entry.value);
           processSensorData(entry.topic, rawArg, entry.timestamp, i + 1);
         } catch(e) { /* skip bad records */ }
       }
+      batchLoading = false;
+      // Refresh all charts once after batch load
+      if (flowChart) flowChart.update('none');
+      if (vibrChart) vibrChart.update('none');
+      if (turbChart) turbChart.update('none');
+      if (tempChart) tempChart.update('none');
 
       const loaded = total - skipped;
       addLog('Loaded ' + loaded + '/' + total + ' records from Firebase' + (skipped > 0 ? ' (' + skipped + ' skipped)' : '') + '.');
@@ -1355,6 +1353,8 @@ if (vibrChart) {
   vibrChart.update();
 }
 
+let batchLoading = false;   // suppress chart.update() during historical batch load
+
 function push(chart, label, value) {
   if (!chart) return;
   chart.data.labels.push(label);
@@ -1363,7 +1363,7 @@ function push(chart, label, value) {
     chart.data.labels.shift();
     chart.data.datasets[0].data.shift();
   }
-  chart.update('none');
+  if (!batchLoading) chart.update('none');
 }
 
 // ─────────────────────────────────────────────
