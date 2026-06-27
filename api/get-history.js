@@ -12,10 +12,17 @@ export default async function handler(req, res) {
 
   try {
     const limit = Math.min(parseInt(req.query.limit) || 500, 5000);
+    const since = req.query.since || null;
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('sensor_data')
-      .select('*')
+      .select('*', { count: 'exact' });
+
+    if (since) {
+      query = query.gte('created_at', since);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -40,8 +47,9 @@ export default async function handler(req, res) {
     }));
 
     return res.status(200).json({
-      total: rows.length,
+      total: count || rows.length,
       data: rows,
+      since: since || null,
     });
   } catch (err) {
     console.error('get-history error:', err);

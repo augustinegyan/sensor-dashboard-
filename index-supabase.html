@@ -342,7 +342,7 @@
 // ─────────────────────────────────────────────
 //  CONSTANTS
 // ─────────────────────────────────────────────
-const MAX          = 60;
+const MAX          = 2000;  // show full day even at ~1 reading per 30 seconds
 const MQTT_WS      = 'wss://broker.emqx.io:8084/mqtt';
 const CLIENT_ID    = 'dashboard_web_' + Math.random().toString(16).slice(2, 8);
 const TOPICS       = ['sensors/flow','sensors/vibration','sensors/turbidity','sensors/environment','sensors/gw_status'];
@@ -371,9 +371,11 @@ async function saveToSupabase(entry) {
 }
 
 // Load historical data from Supabase via Vercel API
-async function loadHistoryFromSupabase(limit) {
+async function loadHistoryFromSupabase(limit, since) {
   try {
-    const res = await fetch(API_BASE + '/get-history?limit=' + (limit || 500));
+    let url = API_BASE + '/get-history?limit=' + (limit || 500);
+    if (since) url += '&since=' + encodeURIComponent(since);
+    const res = await fetch(url);
     if (!res.ok) throw new Error(await res.text());
     const result = await res.json();
     return result.data || [];
@@ -395,10 +397,13 @@ async function pollLatestStatus() {
   }
 }
 
-// Get total count from Supabase
+// Get total count from Supabase for today
 async function getTotalCount() {
   try {
-    const res = await fetch(API_BASE + '/get-history?limit=1');
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0, 0);
+    const since = today.toISOString();
+    const res = await fetch(API_BASE + '/get-history?limit=1&since=' + encodeURIComponent(since));
     if (!res.ok) return 0;
     const result = await res.json();
     return result.total || 0;
@@ -698,10 +703,15 @@ async function doPoll() {
 }
 
 // ─────────────────────────────────────────────
-//  HISTORICAL DATA LOAD
+//  HISTORICAL DATA LOAD — show all of today's readings
 // ─────────────────────────────────────────────
 async function loadHistoricalData() {
-  const rows = await loadHistoryFromSupabase(500);
+  // Start of today in UTC (timestamps in Supabase are UTC)
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0, 0);
+  const since = today.toISOString();
+
+  const rows = await loadHistoryFromSupabase(2000, since);
   if (!rows.length) {
     addLog('No historical records found in Supabase.');
     return;
