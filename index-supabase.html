@@ -457,6 +457,11 @@ const flowChart = makeChart('flowChart', cssVar('--flow') || '#378ADD', 'Flow', 
 const vibrChart = makeChart('vibrChart', cssVar('--vibr') || '#C06DC4', 'Vibration',   'state');
 const turbChart = makeChart('turbChart', cssVar('--turb') || '#1D9E75', 'Turbidity',   'NTU');
 const tempChart = makeChart('tempChart', '#F5A623',                      'Temperature', '°C');
+// Per-chart max limits — temp stays at the old MAX (60) like it was before
+flowChart._max = MAX;
+vibrChart._max = MAX;
+turbChart._max = MAX;
+tempChart._max = 60;  // old implementation: 60 points
 
 if (vibrChart) {
   vibrChart.options.scales.y.min = -0.3;
@@ -470,9 +475,10 @@ let batchLoading = false;
 
 function push(chart, label, value) {
   if (!chart) return;
+  const max = chart._max || MAX;
   chart.data.labels.push(label);
   chart.data.datasets[0].data.push(value);
-  if (chart.data.labels.length > MAX) {
+  if (chart.data.labels.length > max) {
     chart.data.labels.shift();
     chart.data.datasets[0].data.shift();
   }
@@ -533,7 +539,7 @@ function processSensorData(topic, raw, timestamp, sequence) {
   const entry = { topic, value: null, raw, timestamp };
   let anyUpdated = false;
   let logMsg = '';
-  const time = new Date(timestamp).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const time = new Date(timestamp).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
 
   if (isJson) {
     entry.value = raw;
