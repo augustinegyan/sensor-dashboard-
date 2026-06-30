@@ -401,9 +401,7 @@ async function pollLatestStatus() {
 // Get total count from Supabase for today
 async function getTotalCount() {
   try {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0, 0);
-    const since = today.toISOString();
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const res = await fetch(API_BASE + '/get-history?limit=1&since=' + encodeURIComponent(since));
     if (!res.ok) return 0;
     const result = await res.json();
@@ -724,10 +722,8 @@ async function doPoll() {
 //  HISTORICAL DATA LOAD — show all of today's readings
 // ─────────────────────────────────────────────
 async function loadHistoricalData() {
-  // Start of today in UTC (timestamps in Supabase are UTC)
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0, 0);
-  const since = today.toISOString();
+  // Show the last 24 hours — sliding window, not a calendar-day boundary
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const rows = await loadHistoryFromSupabase(2000, since);
   if (!rows.length) {
