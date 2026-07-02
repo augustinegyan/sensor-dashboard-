@@ -417,7 +417,8 @@ async function getTotalCount() {
 function makeChart(id, color, label, unit) {
   const el = document.getElementById(id);
   if (!el) return null;
-  return new Chart(el, {
+  try {
+    return new Chart(el, {
     type: 'line',
     data: { labels: [], datasets: [{
       label: label + ' (' + unit + ')',
@@ -458,6 +459,10 @@ function makeChart(id, color, label, unit) {
       }
     }
   });
+  } catch (e) {
+    addLog('Chart ' + id + ' failed to create: ' + e.message, true);
+    return null;
+  }
 }
 
 const root      = document.documentElement;
@@ -468,10 +473,10 @@ const vibrChart = makeChart('vibrChart', cssVar('--vibr') || '#C06DC4', 'Vibrati
 const turbChart = makeChart('turbChart', cssVar('--turb') || '#1D9E75', 'Turbidity',   'NTU');
 const tempChart = makeChart('tempChart', '#F5A623',                      'Temperature', '°C');
 // Per-chart max limits — temp stays at the old MAX (60) like it was before
-flowChart._max = MAX;
-vibrChart._max = MAX;
-turbChart._max = MAX;
-tempChart._max = 60;  // old implementation: 60 points
+if (flowChart) flowChart._max = MAX;
+if (vibrChart) vibrChart._max = MAX;
+if (turbChart) turbChart._max = MAX;
+if (tempChart) tempChart._max = 60;  // old implementation: 60 points
 
 if (vibrChart) {
   vibrChart.options.scales.y.min = -0.3;
@@ -539,8 +544,17 @@ function processSensorData(topic, raw, timestamp, sequence) {
   let data, isJson;
   try {
     const parsed = JSON.parse(raw);
-    data   = typeof parsed === 'object' && parsed !== null ? parsed : { value: parsed };
-    isJson = true;
+    // If parsed is a real JSON object with keys, use the JSON branch (key lookup).
+    // If it's a primitive (number, string, boolean), treat it as plain data
+    // and route by topic — same as the non-JSON path.
+    if (typeof parsed === 'object' && parsed !== null) {
+      data   = parsed;
+      isJson = true;
+    } else {
+      // Primitive — treat as non-JSON so it routes by topic below
+      data   = { value: raw };
+      isJson = false;
+    }
   } catch {
     data   = { value: raw };
     isJson = false;
