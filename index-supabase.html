@@ -763,9 +763,30 @@ async function loadHistoricalData() {
   if (turbChart) turbChart.update('none');
   if (tempChart) tempChart.update('none');
 
+  // Diagnose topic breakdown
+  const topicCounts = {};
+  for (const r of rows) {
+    if (!r.topic) continue;
+    topicCounts[r.topic] = (topicCounts[r.topic] || 0) + 1;
+  }
+  const diag = Object.entries(topicCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, c]) => t.split('/')[1] + '=' + c)
+    .join('  ');
+
   localCount = rows.length;
   document.getElementById('dbCount').textContent = localCount + ' logged';
   addLog('Loaded ' + rows.length + ' records from Supabase.');
+  addLog('📊 ' + diag);
+
+  // Show format of first record per topic for debugging
+  const seenTopics = new Set();
+  for (const r of rows) {
+    if (!r.topic || seenTopics.has(r.topic)) continue;
+    seenTopics.add(r.topic);
+    const sample = (r.raw || '').substring(0, 100);
+    addLog('📦 ' + r.topic.split('/')[1] + ' raw="' + sample + '"  (len=' + sample.length + ')');
+  }
 }
 
 // ─────────────────────────────────────────────
